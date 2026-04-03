@@ -1,0 +1,12 @@
+$kind: collection
+name: BCK Manager Backend API
+description: |-
+  REST API collection for the BCK Manager Apartment Management System backend.
+  Base URL is controlled by the {{baseUrl}} variable.
+
+  **Auth:** Protected routes require a Bearer JWT token in the Authorization header.
+  Obtain a token via POST /api/auth/login.
+variables:
+  - key: baseUrl
+    value: 'http://localhost:5000'
+    description: Base URL of the BCK Manager backend server
