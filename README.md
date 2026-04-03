@@ -1,4 +1,4 @@
-# BCK Manager Backend
+<!-- # BCK Manager Backend
 
 Backend API cho hệ thống quản lý chung cư mini. Xây dựng với Node.js + Express + MySQL.
 
@@ -532,4 +532,4 @@ Authorization: Bearer {{token}}
 - [ ] Thêm Statistics API
 - [ ] Thêm database migration system
 - [ ] Thêm unit tests
-- [ ] Thêm API documentation (Swagger)
+- [ ] Thêm API documentation (Swagger) -->
