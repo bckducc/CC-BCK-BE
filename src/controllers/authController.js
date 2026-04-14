@@ -78,8 +78,13 @@ export const login = async (req, res) => {
       });
     }
 
-    // Generate JWT token
-    const token = generateToken(user.id, user.username, user.role);
+    // Generate JWT token with landlord_id if applicable
+    let token;
+    if (user.role === 'landlord' && userWithInfo.landlord_id) {
+      token = generateToken(user.id, user.username, user.role, userWithInfo.landlord_id);
+    } else {
+      token = generateToken(user.id, user.username, user.role);
+    }
 
     console.log(`Login successful for user: ${username}`); // Debug
 
@@ -94,10 +99,10 @@ export const login = async (req, res) => {
         name: userWithInfo.full_name || 'Unknown',
         email: `${userWithInfo.username}@${user.role}.local`,
         phone: userWithInfo.phone || '',
-        address: userWithInfo.address || null,
         idNumber: userWithInfo.identity_card || null,
         gender: userWithInfo.gender || null,
         birthday: userWithInfo.birthday || null,
+        landlord_id: userWithInfo.landlord_id || null,
         createdAt: userWithInfo.created_at,
       },
     });

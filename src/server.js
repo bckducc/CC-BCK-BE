@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import tenantRoutes from './routes/tenant.js';
+import roomRoutes from './routes/room.js';
 import pool from './config/database.js';
 
 dotenv.config();
@@ -26,9 +27,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/tenant', tenantRoutes);
+// API Routes (v1)
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/rooms', roomRoutes);
+app.use('/api/v1/tenant', tenantRoutes);
 
 // 404 Handler
 app.use((req, res) => {
