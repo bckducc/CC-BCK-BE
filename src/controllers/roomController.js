@@ -11,16 +11,24 @@ import {
  */
 export const getAllRooms = async (req, res) => {
   try {
-    const landlordId = req.user.landlord_id;
+    const ownerId = req.user.id; // user_id from JWT token (landlord's user_id)
 
-    if (!landlordId) {
+    if (!ownerId) {
       return res.status(403).json({
         success: false,
         message: 'Không có quyền truy cập. Chỉ chủ nhà mới có thể xem phòng',
       });
     }
 
-    const rooms = await getAllRoomsByLandlord(landlordId);
+    const filters = {
+      floor: req.query.floor,
+      status: req.query.status,
+      min_price: req.query.min_price,
+      max_price: req.query.max_price,
+      room_number: req.query.room_number
+    };
+
+    const rooms = await getAllRoomsByLandlord(ownerId, filters);
 
     return res.status(200).json({
       success: true,
@@ -28,11 +36,15 @@ export const getAllRooms = async (req, res) => {
       total: rooms.length,
     });
   } catch (error) {
-    console.error('Get all rooms error:', error);
+    console.error('Get all rooms error:', {
+      type: 'GET_ALL_ROOMS_ERROR',
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(500).json({
       success: false,
       message: 'Không tải được danh sách phòng',
-      error: error.message,
     });
   }
 };
@@ -43,16 +55,16 @@ export const getAllRooms = async (req, res) => {
 export const getRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const landlordId = req.user.landlord_id;
+    const ownerId = req.user.id;
 
-    if (!landlordId) {
+    if (!ownerId) {
       return res.status(403).json({
         success: false,
         message: 'Không có quyền truy cập',
       });
     }
 
-    const room = await getRoomById(id, landlordId);
+    const room = await getRoomById(id, ownerId);
 
     if (!room) {
       return res.status(404).json({
@@ -66,11 +78,16 @@ export const getRoom = async (req, res) => {
       data: room,
     });
   } catch (error) {
-    console.error('Get room error:', error);
+    console.error('Get room error:', {
+      type: 'GET_ROOM_ERROR',
+      roomId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(500).json({
       success: false,
       message: 'Không tải được thông tin phòng',
-      error: error.message,
     });
   }
 };
@@ -80,16 +97,16 @@ export const getRoom = async (req, res) => {
  */
 export const addRoom = async (req, res) => {
   try {
-    const landlordId = req.user.landlord_id;
+    const ownerId = req.user.id;
 
-    if (!landlordId) {
+    if (!ownerId) {
       return res.status(403).json({
         success: false,
         message: 'Không có quyền truy cập. Chỉ chủ nhà mới có thể tạo phòng',
       });
     }
 
-    const room = await createRoom(req.body, landlordId);
+    const room = await createRoom(req.body, ownerId);
 
     return res.status(201).json({
       success: true,
@@ -97,7 +114,14 @@ export const addRoom = async (req, res) => {
       data: room,
     });
   } catch (error) {
-    console.error('Create room error:', error);
+    console.error('Create room error:', {
+      type: 'VALIDATION_ERROR',
+      field: 'room',
+      value: req.body,
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(400).json({
       success: false,
       message: error.message || 'Tạo phòng thất bại',
@@ -111,16 +135,16 @@ export const addRoom = async (req, res) => {
 export const modifyRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const landlordId = req.user.landlord_id;
+    const ownerId = req.user.id;
 
-    if (!landlordId) {
+    if (!ownerId) {
       return res.status(403).json({
         success: false,
         message: 'Không có quyền truy cập',
       });
     }
 
-    const room = await updateRoom(id, req.body, landlordId);
+    const room = await updateRoom(id, req.body, ownerId);
 
     return res.status(200).json({
       success: true,
@@ -128,7 +152,15 @@ export const modifyRoom = async (req, res) => {
       data: room,
     });
   } catch (error) {
-    console.error('Update room error:', error);
+    console.error('Update room error:', {
+      type: 'VALIDATION_ERROR',
+      field: 'room',
+      roomId: req.params.id,
+      value: req.body,
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(400).json({
       success: false,
       message: error.message || 'Cập nhật phòng thất bại',
@@ -142,23 +174,30 @@ export const modifyRoom = async (req, res) => {
 export const removeRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const landlordId = req.user.landlord_id;
+    const ownerId = req.user.id;
 
-    if (!landlordId) {
+    if (!ownerId) {
       return res.status(403).json({
         success: false,
         message: 'Không có quyền truy cập',
       });
     }
 
-    await deleteRoom(id, landlordId);
+    await deleteRoom(id, ownerId);
 
     return res.status(200).json({
       success: true,
       message: 'Xóa phòng thành công',
     });
   } catch (error) {
-    console.error('Delete room error:', error);
+    console.error('Delete room error:', {
+      type: 'VALIDATION_ERROR',
+      field: 'room_deletion',
+      roomId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(400).json({
       success: false,
       message: error.message || 'Xóa phòng thất bại',

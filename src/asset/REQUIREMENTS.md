@@ -39,9 +39,6 @@
 | FR-029 | Xuất hóa đơn |
 | FR-030 | Xem Dashboard chủ nhà |
 | FR-031 | Xem Dashboard người thuê |
-| FR-032 | Xem thông báo |
-| FR-033 | Đánh dấu đã đọc thông báo | --x
-
 ---
 
 ## Yêu cầu phi chức năng
@@ -50,19 +47,17 @@
 |----|---------|-----|
 | NFR-001 | Hiệu năng | Thời gian phản hồi API ≤ 500ms |
 | NFR-002 | Hiệu năng | Hỗ trợ ≥ 50 người dùng đồng thời |
-| NFR-003 | Hiệu năng | Bộ nhớ sử dụng ≤ 512MB |
+| NFR-003 | Hiệu năng | Tối ưu sử dụng tài nguyên hệ thống |
 | NFR-004 | Bảo mật | Mật khẩu hash bcrypt (salt ≥ 10) |
 | NFR-005 | Bảo mật | JWT token có hiệu lực 7 ngày |
 | NFR-006 | Bảo mật | Giới hạn truy cập ≥ 100 yêu cầu/phút/mỗi người dùng |
 | NFR-007 | Bảo mật | Kiểm tra dữ liệu đầu vào đầy đủ |
 | NFR-008 | Bảo mật | Sử dụng câu truy vấn tham số (chống SQL injection) |
 | NFR-009 | Tính khả dụng | Thời gian hoạt động ≥ 99.5% |
-| NFR-010 | Khả năng mở rộng | Hỗ trợ mở rộng theo chiều ngang |
-| NFR-011 | Độ tin cậy | Tỷ lệ lỗi ≤ 0.1% |
-| NFR-012 | Độ tin cậy | Giao dịch dữ liệu tuân thủ ACID |
-| NFR-013 | Tính khả dụng cho người dùng | API có phiên bản (`/api/v1/...`) |
-| NFR-014 | Tính khả dụng cho người dùng | Phản hồi JSON có cấu trúc nhất quán |
-| NFR-015 | Tính khả dụng cho người dùng | Phân trang trên tất cả danh sách |
-| NFR-016 | Khả năng bảo trì | Độ phủ kiểm thử đơn vị ≥ 70% |
-| NFR-017 | Tính tương thích | Node.js v16+, MySQL 5.7+ |
-| NFR-018 | Quy định và tuân thủ | Sao lưu dữ liệu hàng ngày, giữ 30 ngày |
+| NFR-010 | Độ tin cậy | Tỷ lệ lỗi ≤ 0.1% |
+| NFR-011 | Tính khả dụng cho người dùng | API có phiên bản (`/api/v1/...`) |
+| NFR-012 | Tính khả dụng cho người dùng | Phản hồi JSON có cấu trúc nhất quán |
+| NFR-013 | Tính khả dụng cho người dùng | Phân trang trên tất cả danh sách |
+| NFR-014 | Khả năng bảo trì | Độ phủ kiểm thử đơn vị ≥ 70% |
+| NFR-015 | Tính tương thích | Node.js v16+, MySQL 5.7+ |
+| NFR-016 | Quy định và tuân thủ | Sao lưu dữ liệu hàng ngày, giữ 30 ngày |

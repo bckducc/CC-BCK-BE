@@ -1,27 +1,64 @@
-# Dependencies
+# --- Dependencies ---
 node_modules/
+.pnp
+.pnp.js
+
+# --- Environment ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.test
+*.env
+
+# --- Testing ---
+coverage/
+*.lcov
+
+# --- Logs ---
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Environment
-.env
-.env.local
-.env.*.local
+# --- Build & Output ---
+dist/
+build/
+bin/
+obj/
+out/
+debug/
+release/
+*.tgz
 
-# IDE
-.vscode/
+# --- IDEs & Editors ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
 .idea/
 *.swp
 *.swo
-*~
+*.sublime-project
+*.sublime-workspace
 .DS_Store
+Thumbs.db
 
-# Build
-dist/
-build/
-*.tgz
+# --- Tools Specific (Claude, Kiro, Nexus, etc.) ---
+.claude/
+.gitnexus/
+.kiro/
+.postman/
+.clover/
 
-# Logs
-logs/
-*.log
+# --- Misc ---
+package-lock.json.backup
+yarn.lock.backup
+*.md
+docker-compose.test.yml
+vitest.config.js
+tests/

@@ -1,17 +1,41 @@
 import pool from '../config/database.js';
+import { validatePrice } from '../utils/validators.js';
 
 /**
- * Get all rooms for a specific landlord
+ * Get all rooms for a specific landlord (by owner_id)
  */
-export const getAllRoomsByLandlord = async (landlordId) => {
+export const getAllRoomsByLandlord = async (ownerId, filters = {}) => {
+  const { floor, status, min_price, max_price, room_number } = filters;
   try {
     const connection = await pool.getConnection();
-    const [rows] = await connection.query(
-      `SELECT * FROM rooms 
-       WHERE landlord_id = ? 
-       ORDER BY room_number ASC`,
-      [landlordId]
-    );
+    
+    let query = 'SELECT * FROM rooms WHERE owner_id = ?';
+    const params = [ownerId];
+
+    if (floor) {
+      query += ' AND floor = ?';
+      params.push(floor);
+    }
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+    if (min_price) {
+      query += ' AND price >= ?';
+      params.push(parseFloat(min_price));
+    }
+    if (max_price) {
+      query += ' AND price <= ?';
+      params.push(parseFloat(max_price));
+    }
+    if (room_number) {
+      query += ' AND room_number LIKE ?';
+      params.push(`%${room_number}%`);
+    }
+
+    query += ' ORDER BY room_number ASC';
+
+    const [rows] = await connection.query(query, params);
     connection.release();
     return rows;
   } catch (error) {
@@ -23,13 +47,13 @@ export const getAllRoomsByLandlord = async (landlordId) => {
 /**
  * Get a specific room by ID
  */
-export const getRoomById = async (roomId, landlordId) => {
+export const getRoomById = async (roomId, ownerId) => {
   try {
     const connection = await pool.getConnection();
     const [rows] = await connection.query(
       `SELECT * FROM rooms 
-       WHERE id = ? AND landlord_id = ?`,
-      [roomId, landlordId]
+       WHERE id = ? AND owner_id = ?`,
+      [roomId, ownerId]
     );
     connection.release();
     
@@ -43,25 +67,30 @@ export const getRoomById = async (roomId, landlordId) => {
 /**
  * Create a new room
  */
-export const createRoom = async (roomData, landlordId) => {
+export const createRoom = async (roomData, ownerId) => {
   try {
     const {
       room_number,
-      area,
       floor,
+      area,
       price,
       status,
       description,
+      deposit,
     } = roomData;
 
     // Validation
-    if (!room_number || !area || !floor === undefined || !price || !status) {
-      throw new Error('Số phòng, diện tích, tầng, giá và trạng thái là bắt buộc');
+    if (!room_number || !price) {
+      throw new Error('Số phòng và giá là bắt buộc');
     }
+
+    // Validate price and deposit
+    validatePrice(price, 'room_price');
+    validatePrice(deposit || 0, 'deposit');
 
     // Validate status
     const validStatuses = ['available', 'rented', 'maintenance'];
-    if (!validStatuses.includes(status)) {
+    if (status && !validStatuses.includes(status)) {
       throw new Error(`Trạng thái không hợp lệ. Chỉ chấp nhận: ${validStatuses.join(', ')}`);
     }
 
@@ -70,8 +99,8 @@ export const createRoom = async (roomData, landlordId) => {
     // Check if room number already exists for this landlord
     const [existing] = await connection.query(
       `SELECT id FROM rooms 
-       WHERE room_number = ? AND landlord_id = ?`,
-      [room_number, landlordId]
+       WHERE room_number = ? AND owner_id = ?`,
+      [room_number, ownerId]
     );
 
     if (existing.length > 0) {
@@ -81,9 +110,17 @@ export const createRoom = async (roomData, landlordId) => {
 
     // Insert new room
     const [result] = await connection.query(
-      `INSERT INTO rooms (room_number, area, floor, price, status, description, landlord_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [room_number, area, floor, price, status, description || '', landlordId]
+      `INSERT INTO rooms (room_number, floor, area, price, status, description, owner_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        room_number, 
+        floor || null, 
+        area || null, 
+        price, 
+        status || 'available', 
+        description || null, 
+        ownerId
+      ]
     );
 
     connection.release();
@@ -91,12 +128,12 @@ export const createRoom = async (roomData, landlordId) => {
     return {
       id: result.insertId,
       room_number,
-      area,
       floor,
+      area,
       price,
-      status,
+      status: status || 'available',
       description,
-      landlord_id: landlordId,
+      owner_id: ownerId,
     };
   } catch (error) {
     console.error('Database error in createRoom:', error);
@@ -107,16 +144,25 @@ export const createRoom = async (roomData, landlordId) => {
 /**
  * Update a room
  */
-export const updateRoom = async (roomId, roomData, landlordId) => {
+export const updateRoom = async (roomId, roomData, ownerId) => {
   try {
     const {
       room_number,
-      area,
       floor,
+      area,
       price,
       status,
       description,
+      deposit,
     } = roomData;
+
+    // Validate price and deposit if provided
+    if (price !== undefined) {
+      validatePrice(price, 'room_price');
+    }
+    if (deposit !== undefined) {
+      validatePrice(deposit, 'deposit');
+    }
 
     // Validate status if provided
     if (status) {
@@ -130,8 +176,8 @@ export const updateRoom = async (roomId, roomData, landlordId) => {
 
     // Check if room exists and belongs to landlord
     const [existing] = await connection.query(
-      `SELECT * FROM rooms WHERE id = ? AND landlord_id = ?`,
-      [roomId, landlordId]
+      `SELECT * FROM rooms WHERE id = ? AND owner_id = ?`,
+      [roomId, ownerId]
     );
 
     if (existing.length === 0) {
@@ -141,10 +187,15 @@ export const updateRoom = async (roomId, roomData, landlordId) => {
 
     // If room_number is being changed, check if new number already exists
     if (room_number && room_number !== existing[0].room_number) {
+      if (existing[0].status === 'rented') {
+        connection.release();
+        throw new Error('Không được sửa số phòng nếu phòng đang có người thuê');
+      }
+
       const [conflict] = await connection.query(
         `SELECT id FROM rooms 
-         WHERE room_number = ? AND landlord_id = ? AND id != ?`,
-        [room_number, landlordId, roomId]
+         WHERE room_number = ? AND owner_id = ? AND id != ?`,
+        [room_number, ownerId, roomId]
       );
 
       if (conflict.length > 0) {
@@ -161,13 +212,13 @@ export const updateRoom = async (roomId, roomData, landlordId) => {
       updateFields.push('room_number = ?');
       updateValues.push(room_number);
     }
-    if (area !== undefined) {
-      updateFields.push('area = ?');
-      updateValues.push(area);
-    }
     if (floor !== undefined) {
       updateFields.push('floor = ?');
       updateValues.push(floor);
+    }
+    if (area !== undefined) {
+      updateFields.push('area = ?');
+      updateValues.push(area);
     }
     if (price !== undefined) {
       updateFields.push('price = ?');
@@ -181,17 +232,19 @@ export const updateRoom = async (roomId, roomData, landlordId) => {
       updateFields.push('description = ?');
       updateValues.push(description);
     }
+    if (deposit !== undefined) {
+      updateFields.push('deposit = ?');
+      updateValues.push(deposit);
+    }
 
-    updateFields.push('updated_at = NOW()');
-
-    if (updateFields.length === 1) {
-      // Only updated_at, no actual changes
+    if (updateFields.length === 0) {
+      // No actual changes
       connection.release();
       return existing[0];
     }
 
-    const query = `UPDATE rooms SET ${updateFields.join(', ')} WHERE id = ? AND landlord_id = ?`;
-    updateValues.push(roomId, landlordId);
+    const query = `UPDATE rooms SET ${updateFields.join(', ')} WHERE id = ? AND owner_id = ?`;
+    updateValues.push(roomId, ownerId);
 
     await connection.query(query, updateValues);
     connection.release();
@@ -199,12 +252,13 @@ export const updateRoom = async (roomId, roomData, landlordId) => {
     return {
       id: roomId,
       room_number: room_number !== undefined ? room_number : existing[0].room_number,
-      area: area !== undefined ? area : existing[0].area,
       floor: floor !== undefined ? floor : existing[0].floor,
+      area: area !== undefined ? area : existing[0].area,
       price: price !== undefined ? price : existing[0].price,
       status: status !== undefined ? status : existing[0].status,
       description: description !== undefined ? description : existing[0].description,
-      landlord_id: landlordId,
+      deposit: deposit !== undefined ? deposit : existing[0].deposit,
+      owner_id: ownerId,
     };
   } catch (error) {
     console.error('Database error in updateRoom:', error);
@@ -215,14 +269,14 @@ export const updateRoom = async (roomId, roomData, landlordId) => {
 /**
  * Delete a room
  */
-export const deleteRoom = async (roomId, landlordId) => {
+export const deleteRoom = async (roomId, ownerId) => {
   try {
     const connection = await pool.getConnection();
 
     // Check if room exists and belongs to landlord
     const [existing] = await connection.query(
-      `SELECT * FROM rooms WHERE id = ? AND landlord_id = ?`,
-      [roomId, landlordId]
+      `SELECT * FROM rooms WHERE id = ? AND owner_id = ?`,
+      [roomId, ownerId]
     );
 
     if (existing.length === 0) {
@@ -230,10 +284,21 @@ export const deleteRoom = async (roomId, landlordId) => {
       throw new Error('Phòng không tìm thấy');
     }
 
+    // Check for active contracts
+    const [activeContracts] = await connection.query(
+      `SELECT id FROM contracts WHERE room_id = ? AND status = 'active'`,
+      [roomId]
+    );
+
+    if (activeContracts.length > 0) {
+      connection.release();
+      throw new Error('Phòng đang có người thuê, không thể xóa');
+    }
+
     // Delete the room
     await connection.query(
-      `DELETE FROM rooms WHERE id = ? AND landlord_id = ?`,
-      [roomId, landlordId]
+      `DELETE FROM rooms WHERE id = ? AND owner_id = ?`,
+      [roomId, ownerId]
     );
 
     connection.release();

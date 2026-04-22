@@ -1,0 +1,152 @@
+Table users {
+  id int [pk, increment]
+  username varchar(50) [unique, not null]
+  password varchar(255) [not null]
+  role enum('landlord','tenant','admin') [not null]
+  is_active boolean [default: true]
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table landlord {
+  user_id int [pk]
+  full_name varchar(100) [not null]
+  phone varchar(10)
+  bank_name varchar(100)
+  bank_account_number varchar(50)
+  bank_account_name varchar(100)
+  tax_code varchar(50)
+}
+
+Table tenant {
+  user_id int [pk]
+  full_name varchar(100) [not null]
+  phone varchar(10)
+  identity_card varchar(20)
+  birthday date
+  gender enum('male','female','other')
+  address varchar(255)
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table rooms {
+  id int [pk, increment]
+  owner_id int [not null]
+  room_number varchar(20) [not null]
+  floor int
+  area decimal(10,2)
+  price decimal(12,2) [not null]
+  status enum('available','rented','maintenance') [default: 'available']
+  description text
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table services {
+  id int [pk, increment]
+  service_name varchar(100) [not null]
+  price decimal(12,2) [not null]
+  unit varchar(20)
+  is_optional boolean [default: false]
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table room_services {
+  id int [pk, increment]
+  room_id int [not null]
+  service_id int [not null]
+  quantity int [default: 1]
+  applied_date date [default: `CURRENT_DATE`]
+
+  indexes {
+    (room_id, service_id) [unique]
+  }
+}
+
+Table contracts {
+  id int [pk, increment]
+  room_id int [not null]
+  tenant_id int [not null]
+  contract_code varchar(50) [unique]
+  start_date date [not null]
+  end_date date [not null]
+  deposit_amount decimal(12,2) [not null]
+  monthly_rent decimal(12,2) [not null]
+  terms text
+  status enum('active','expired','terminated') [default: 'active']
+  signed_date date
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table utilities {
+  id int [pk, increment]
+  room_id int [not null]
+  month int [not null]
+  year int [not null]
+  electric_old int [default: 0]
+  electric_new int [default: 0]
+  electric_price decimal(12,2) [not null]
+  water_old int [default: 0]
+  water_new int [default: 0]
+  water_price decimal(12,2) [not null]
+  recorded_date date
+  note text
+
+  indexes {
+    (room_id, month, year) [unique]
+  }
+}
+
+Table invoices {
+  id int [pk, increment]
+  room_id int [not null]
+  tenant_id int [not null]
+  contract_id int
+  month int [not null]
+  year int [not null]
+  room_fee decimal(12,2) [default: 0]
+  service_fee decimal(12,2) [default: 0]
+  electric_fee decimal(12,2) [default: 0]
+  water_fee decimal(12,2) [default: 0]
+  other_fees decimal(12,2) [default: 0]
+  total_amount decimal(12,2) [not null]
+  discount decimal(12,2) [default: 0]
+  final_amount decimal(12,2) [not null]
+  due_date date
+  status enum('pending','paid','overdue','cancelled') [default: 'pending']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+  updated_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table payments {
+  id int [pk, increment]
+  invoice_id int [not null]
+  amount decimal(12,2) [not null]
+  payment_date date [not null]
+  payment_method enum('cash','bank_transfer') [default: 'cash']
+  transaction_code varchar(100)
+  note text
+  received_by int
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table notifications {
+  id int [pk, increment]
+  user_id int
+  title varchar(255) [not null]
+  content text [not null]
+  type enum('invoice','announcement','reminder') [default: 'announcement']
+  is_read boolean [default: false]
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Ref: landlord.user_id > users.id
+Ref: tenant.user_id > users.id
+Ref: rooms.owner_id > landlord.user_id
+Ref: room_services.room_id > rooms.id
+Ref: room_services.service_id > services.id
+Ref: contracts.room_id > rooms.id
+Ref: contracts.tenant_id > tenant.user_id
+Ref: utilities.room_id > rooms.id
+Ref: invoices.contract_id > contracts.id
+Ref: payments.invoice_id > invoices.id
+Ref: payments.received_by > users.id
+Ref: notifications.user_id > users.id
