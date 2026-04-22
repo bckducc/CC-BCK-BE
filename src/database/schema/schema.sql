@@ -1,0 +1,28 @@
+-- ========================
+-- BCK Manager Database Schema
+-- Run this file to create all tables
+-- ========================
+-- Execute in order:
+-- 1. 01-users.sql (users, landlord, tenant)
+-- 2. 00-rooms.sql (rooms)
+-- 3. 02-contracts.sql (contracts)
+-- 4. 03-services.sql (services, room_services)
+-- 5. 04-utilities.sql (utilities)
+-- 6. 05-invoices.sql (invoices, payments)
+-- 7. 06-notifications.sql (notifications)
+
+-- NOTE: Run schema files individually in MySQL client
+-- Example: source src/database/schema/01-users.sql;
+
+-- Drop all tables in reverse order (for development/reset only)
+-- DROP TABLE IF EXISTS notifications;
+-- DROP TABLE IF EXISTS payments;
+-- DROP TABLE IF EXISTS invoices;
+-- DROP TABLE IF EXISTS utilities;
+-- DROP TABLE IF EXISTS room_services;
+-- DROP TABLE IF EXISTS services;
+-- DROP TABLE IF EXISTS contracts;
+-- DROP TABLE IF EXISTS rooms;
+-- DROP TABLE IF EXISTS tenant;
+-- DROP TABLE IF EXISTS landlord;
+-- DROP TABLE IF EXISTS users;

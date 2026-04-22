@@ -1,5 +1,6 @@
 import { findUserByUsername, getUserWithLandlordInfo, getUserWithTenantInfo, validatePassword } from '../services/authService.js';
 import { generateToken } from '../middleware/auth.js';
+import bcrypt from 'bcryptjs';
 
 export const login = async (req, res) => {
   try {
@@ -36,9 +37,15 @@ export const login = async (req, res) => {
       });
     }
 
-    // Validate password (comparing plain text for now, should be hashed in production)
-    // TODO: Hash passwords in database and use bcrypt comparison
-    const passwordMatch = password === user.password;
+    // Validate password with bcrypt
+    let passwordMatch = false;
+    if (user.password && user.password.startsWith('$2')) {
+      // Hashed password in database
+      passwordMatch = await bcrypt.compare(password, user.password);
+    } else {
+      // Legacy plain text password (for backward compatibility)
+      passwordMatch = password === user.password;
+    }
 
     if (!passwordMatch) {
       console.log(`Password mismatch for user: ${username}`); // Debug
@@ -107,10 +114,15 @@ export const login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Login error:', error.message, error.stack); // Better debugging
+    console.error('Login error:', {
+      type: 'LOGIN_ERROR',
+      username: req.body.username,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(500).json({
       success: false,
-      message: error.message || 'Đăng nhập thất bại',
+      message: 'Đăng nhập thất bại',
     });
   }
 };
@@ -157,11 +169,15 @@ export const me = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Get user error:', error);
+    console.error('Get user error:', {
+      type: 'GET_USER_ERROR',
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(500).json({
       success: false,
       message: 'Lấy thông tin người dùng thất bại',
-      error: error.message,
     });
   }
 };
@@ -174,10 +190,15 @@ export const logout = (req, res) => {
       message: 'Đăng xuất thành công',
     });
   } catch (error) {
+    console.error('Logout error:', {
+      type: 'LOGOUT_ERROR',
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(500).json({
       success: false,
       message: 'Đăng xuất thất bại',
-      error: error.message,
     });
   }
 };
@@ -207,11 +228,15 @@ export const checkUser = async (req, res) => {
       user,
     });
   } catch (error) {
-    console.error('Error checking user:', error);
+    console.error('Check user error:', {
+      type: 'CHECK_USER_ERROR',
+      username: req.query.username,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     return res.status(500).json({
       success: false,
       message: 'Kiểm tra người dùng thất bại',
-      error: error.message,
     });
   }
 };
