@@ -1,16 +1,24 @@
-import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
+<<<<<<< Updated upstream
 import authRoutes from './routes/auth.js';
 import tenantRoutes from './routes/tenant.js';
 import roomRoutes from './routes/room.js';
 import pool from './config/database.js';
+=======
+import path from 'path';
+import { fileURLToPath } from 'url';
+import app from './app.js';
+import pool from './config/database.js';
+import { initDatabase } from './database/init-database.js';
+>>>>>>> Stashed changes
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5002;
 
+<<<<<<< Updated upstream
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -54,6 +62,13 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, async () => {
   try {
     // Test database connection
+=======
+const server = app.listen(PORT, async () => {
+  try {
+    console.log('🔧 Kiểm tra và khởi tạo database...');
+    await initDatabase();
+    
+>>>>>>> Stashed changes
     const connection = await pool.getConnection();
     console.log('✓ Database connected successfully');
     connection.release();
@@ -67,7 +82,6 @@ const server = app.listen(PORT, async () => {
   }
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, closing server...');
   server.close(() => {

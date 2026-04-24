@@ -1,15 +1,15 @@
 import jwt from 'jsonwebtoken';
 
 export const generateToken = (userId, username, role, landlordId = null) => {
-  const payload = { id: userId, username, role };
-  if (landlordId) {
-    payload.landlord_id = landlordId;
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is missing. Check .env loading/path.');
   }
-  return jwt.sign(
-    payload,
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE }
-  );
+  const payload = { id: userId, username, role };
+  if (landlordId) payload.landlord_id = landlordId;
+
+  return jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE,
+  });
 };
 
 export const verifyToken = (token) => {
@@ -33,7 +33,6 @@ export const authMiddleware = (req, res, next) => {
     }
 
     const decoded = verifyToken(token);
-
     if (!decoded) {
       return res.status(401).json({
         success: false,
@@ -62,7 +61,6 @@ export const requireRole = (requiredRoles) => {
     }
 
     const rolesArray = Array.isArray(requiredRoles) ? requiredRoles : [requiredRoles];
-
     if (!rolesArray.includes(req.user.role)) {
       return res.status(403).json({
         success: false,

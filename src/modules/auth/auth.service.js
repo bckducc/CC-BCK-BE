@@ -1,18 +1,15 @@
-import pool from '../config/database.js';
+import pool from '../../config/database.js';
 import bcrypt from 'bcryptjs';
 
 export const findUserByUsername = async (username) => {
   try {
     const connection = await pool.getConnection();
-    const [rows] = await connection.query(
-      'SELECT * FROM users WHERE username = ?',
-      [username]
-    );
+    const [rows] = await connection.query('SELECT * FROM users WHERE username = ?', [username]);
     connection.release();
-    
+
     const user = rows[0];
     if (user) {
-      console.log(`Found user: ${user.username} (id: ${user.id})`); // Debug
+      console.log(`Found user: ${user.username} (id: ${user.id})`);
     }
     return user || null;
   } catch (error) {
@@ -43,13 +40,11 @@ export const getUserWithLandlordInfo = async (userId) => {
       [userId]
     );
     connection.release();
-    
+
     const user = rows[0];
-    if (!user) {
-      throw new Error(`Không tìm thấy người dùng có id ${userId}`);
-    }
-    
-    console.log('User with landlord info:', user); // Debug
+    if (!user) throw new Error(`Không tìm thấy người dùng có id ${userId}`);
+
+    console.log('User with landlord info:', user);
     return user;
   } catch (error) {
     console.error('Database error in getUserWithLandlordInfo:', error);
@@ -78,13 +73,11 @@ export const getUserWithTenantInfo = async (userId) => {
       [userId]
     );
     connection.release();
-    
+
     const user = rows[0];
-    if (!user) {
-      throw new Error(`Không tìm thấy người dùng có id ${userId}`);
-    }
-    
-    console.log('User with tenant info:', user); // Debug
+    if (!user) throw new Error(`Không tìm thấy người dùng có id ${userId}`);
+
+    console.log('User with tenant info:', user);
     return user;
   } catch (error) {
     console.error('Database error in getUserWithTenantInfo:', error);

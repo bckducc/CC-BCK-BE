@@ -1,13 +1,10 @@
 import express from 'express';
-import { login, me, logout, checkUser } from '../controllers/authController.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { login, me, logout, checkUser } from './auth.controller.js';
+import { authMiddleware } from '../../common/middleware/auth.js';
 
 const router = express.Router();
 
-// Public routes
 router.post('/login', login);
-
-// Protected routes
 router.get('/me', authMiddleware, me);
 router.post('/logout', authMiddleware, logout);
 router.get('/check-user', checkUser);
