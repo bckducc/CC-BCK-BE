@@ -16,6 +16,7 @@
 | UC-06 | Tìm kiếm người thuê | Chủ nhà |
 | UC-07 | Vô hiệu hóa / kích hoạt tài khoản | Chủ nhà |
 | UC-08 | Tạo phòng mới | Chủ nhà |
+| UC-09 | Tìm kiếm phòng | Chủ nhà |
 | UC-10 | Cập nhật thông tin phòng | Chủ nhà |
 | UC-11 | Xóa phòng | Chủ nhà |
 | UC-12 | Xem phòng đang thuê | Người thuê |
@@ -35,7 +36,9 @@
 | UC-26 | Xem chi tiết hóa đơn | Chủ nhà, Người thuê |
 | UC-27 | Xác nhận thanh toán | Chủ nhà |
 | UC-28 | Xuất hóa đơn | Chủ nhà, Người thuê |
-| UC-29 | Xem thông báo | Người thuê |
+| UC-29 | Xem Dashboard chủ nhà | Chủ nhà |
+| UC-30 | Xem Dashboard người thuê | Người thuê |
+| UC-31 | Xem thông báo | Người thuê |
 ---
 
 ## UC-01: Đăng nhập
@@ -217,6 +220,26 @@
                         Giá thuê hoặc tiền cọc là số âm → thông báo "Giá trị không hợp lệ". |
 | **Quy tắc nghiệp vụ** | Số phòng phải duy nhất trong toàn hệ thống. Phòng mới tạo có trạng thái mặc định là "trống". |
 | **Hậu điều kiện** | Phòng mới xuất hiện trong danh sách phòng với trạng thái "trống". |
+
+---
+
+## UC-09: Tìm kiếm phòng
+
+| Trường | Nội dung |
+|--------|----------|
+| **Mã Use Case** | UC-09 |
+| **Tên Use Case** | Tìm kiếm phòng |
+| **Tác nhân** | Chủ nhà |
+| **Mục tiêu** | Tìm nhanh phòng trong danh sách |
+| **Mô tả** | Chủ nhà tìm kiếm phòng theo số phòng, tầng, khoảng giá hoặc trạng thái (trống, đang thuê, bảo trì). |
+| **Điều kiện tiên quyết** | Chủ nhà đã đăng nhập. |
+| **Điều kiện kích hoạt** | Chủ nhà nhập từ khóa hoặc chọn bộ lọc trên trang danh sách phòng. |
+| **Luồng sự kiện chính** | 1. Chủ nhà nhập từ khóa hoặc chọn bộ lọc (trạng thái, tầng, khoảng giá). 
+                            2. Hệ thống lọc danh sách phòng theo điều kiện. 
+                            3. Hệ thống hiển thị kết quả phù hợp. |
+| **Luồng thay thế** | Không có kết quả phù hợp → hiển thị thông báo "Không tìm thấy phòng nào". |
+| **Quy tắc nghiệp vụ** | Có thể kết hợp nhiều điều kiện lọc cùng lúc. Kết quả tìm kiếm được phân trang nếu nhiều. |
+| **Hậu điều kiện** | Danh sách phòng được hiển thị theo kết quả tìm kiếm. |
 
 ---
 
@@ -630,12 +653,53 @@
 | **Quy tắc nghiệp vụ** | File hóa đơn có đầy đủ thông tin người thuê, phòng, chi tiết các khoản, tổng cộng và thông tin chủ nhà. |
 | **Hậu điều kiện** | File hóa đơn được tạo và người dùng có thể in hoặc tải về. |
 
+---
 
-## UC-29: Xem thông báo
+## UC-29: Xem Dashboard chủ nhà
 
 | Trường | Nội dung |
 |--------|----------|
 | **Mã Use Case** | UC-29 |
+| **Tên Use Case** | Xem Dashboard chủ nhà |
+| **Tác nhân** | Chủ nhà |
+| **Mục tiêu** | Xem tổng quan tình trạng toàn bộ hệ thống |
+| **Mô tả** | Chủ nhà xem bảng tổng quan gồm: tổng số phòng, số phòng trống, số phòng đang thuê, doanh thu tháng, số hóa đơn chưa thanh toán, số người thuê mới. |
+| **Điều kiện tiên quyết** | Chủ nhà đã đăng nhập. |
+| **Điều kiện kích hoạt** | Chủ nhà đăng nhập thành công hoặc nhấn "Tổng quan". |
+| **Luồng sự kiện chính** | 1. Chủ nhà mở Dashboard. 
+                            2. Hệ thống tổng hợp dữ liệu: số phòng theo trạng thái, doanh thu, hóa đơn, người thuê. 
+                            3. Hệ thống hiển thị Dashboard. |
+| **Luồng thay thế** | Không có. |
+| **Quy tắc nghiệp vụ** | Dữ liệu Dashboard cập nhật theo thời gian thực. |
+| **Hậu điều kiện** | Dashboard hiển thị đầy đủ thông tin tổng quan. |
+
+---
+
+## UC-30: Xem Dashboard người thuê
+
+| Trường | Nội dung |
+|--------|----------|
+| **Mã Use Case** | UC-30 |
+| **Tên Use Case** | Xem Dashboard người thuê |
+| **Tác nhân** | Người thuê |
+| **Mục tiêu** | Xem tổng quan tình trạng thuê của mình |
+| **Mô tả** | Người thuê xem bảng tổng quan gồm: thông tin phòng đang thuê, hóa đơn tháng này, thông báo mới chưa đọc, thông tin hợp đồng. |
+| **Điều kiện tiên quyết** | Người thuê đã đăng nhập. |
+| **Điều kiện kích hoạt** | Người thuê đăng nhập thành công hoặc nhấn "Trang chủ". |
+| **Luồng sự kiện chính** | 1. Người thuê mở Dashboard. 
+                            2. Hệ thống lấy thông tin: phòng đang thuê, hóa đơn tháng này, thông báo mới. 
+                            3. Hệ thống hiển thị Dashboard. |
+| **Luồng thay thế** | Người thuê chưa có hợp đồng → hiển thị thông báo "Bạn chưa thuê phòng nào". |
+| **Quy tắc nghiệp vụ** | Chỉ hiển thị dữ liệu liên quan đến người thuê đang đăng nhập. |
+| **Hậu điều kiện** | Dashboard hiển thị đầy đủ thông tin tổng quan của người thuê. |
+
+---
+
+## UC-31: Xem thông báo
+
+| Trường | Nội dung |
+|--------|----------|
+| **Mã Use Case** | UC-31 |
 | **Tên Use Case** | Xem thông báo |
 | **Tác nhân** | Người thuê |
 | **Mục tiêu** | Xem danh sách thông báo nhắc thanh toán và thông báo khác |

@@ -57,6 +57,7 @@ SOURCE src/database/schema/07-utility-config.sql;
 -- Show all tables
 SHOW TABLES;
 
+-- Verify foreign key relationships
 SELECT 
     TABLE_NAME,
     COLUMN_NAME,
@@ -71,6 +72,7 @@ WHERE
 ORDER BY
     TABLE_NAME, COLUMN_NAME;
 
+-- Count records in each table
 SELECT 'users' AS table_name, COUNT(*) AS record_count FROM users
 UNION ALL
 SELECT 'landlord', COUNT(*) FROM landlord

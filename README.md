@@ -1,535 +1,266 @@
-<!-- # BCK Manager Backend
+# BCK Manager - Hệ Thống Quản Lý Chung Cư Mini
 
-Backend API cho hệ thống quản lý chung cư mini. Xây dựng với Node.js + Express + MySQL.
+Backend API cho hệ thống quản lý cho thuê phòng trọ/chung cư mini. Xây dựng với Node.js + Express + MySQL.
 
-## 📋 Cài Đặt
-
-### 1. Prerequisites
-- Node.js v16+
-- MySQL 5.7+
-- npm hoặc yarn
-
-### 2. Cài Đặt Dependencies
+## ⚡ Quick Start
 
 ```bash
+# 1. Clone repository
+git clone <repository-url>
+cd bck-manager
+
+# 2. Cài đặt dependencies
 npm install
+
+# 3. Cấu hình .env
+cp .env.example .env
+# Chỉnh sửa DB_HOST, DB_USER, DB_PASSWORD, JWT_SECRET
+
+# 4. Chạy server (database tự động khởi tạo!)
+npm start
 ```
 
-### 3. Cấu Hình Database
+**Đó là tất cả!** 🎉 Database sẽ tự động được tạo và khởi tạo schema khi server start lần đầu.
 
-Chạy SQL script để tạo database và tables:
+## 📋 Yêu Cầu Hệ Thống
 
-```sql
-use ccbck;
+- **Node.js**: v16 trở lên
+- **MySQL**: 5.7 trở lên
+- **npm** hoặc **yarn**
 
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('landlord','tenant','admin') NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+## 🔧 Cấu Hình
 
-INSERT INTO users (username, password, role)
-VALUES ('bckduc', '123456', 'landlord');
+### File .env
 
-CREATE TABLE landlord (
-    user_id INT PRIMARY KEY,
-    full_name VARCHAR(100) NOT NULL,
-    phone VARCHAR(10),
-    bank_name VARCHAR(100),
-    bank_account_number VARCHAR(50),
-    bank_account_name VARCHAR(100),
-    tax_code VARCHAR(50),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+```env
+# Database
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=bck_manager
 
-INSERT INTO landlord (
-    user_id,
-    full_name,
-    phone,
-    bank_name,
-    bank_account_number,
-    bank_account_name
-)
-VALUES (
-    1,
-    'Trần Anh Đức',
-    '0121020040',
-    'MB Bank',
-    '0121020040',
-    'Trần Anh Đức'
-);
+# JWT
+JWT_SECRET=your_secret_key_here
+JWT_EXPIRES_IN=7d
+
+# Server
+PORT=5000
+NODE_ENV=development
+
+# CORS
+CORS_ORIGIN=*
 ```
 
-### 4. Cấu Hình Environment
+## 🚀 Chạy Ứng Dụng
 
-Tạo file `.env` (đã có mẫu):
-
-### 5. Chạy Server
-
-**Development (with auto-reload):**
+### Development Mode (với auto-reload)
 ```bash
 npm run dev
 ```
 
-**Production:**
+### Production Mode
 ```bash
 npm start
 ```
 
 Server sẽ chạy tại: `http://localhost:5000`
 
----
+## 📚 Tài Liệu
+
+- **[SYSTEM_OVERVIEW.md](./SYSTEM_OVERVIEW.md)** - Tổng quan hệ thống, cấu trúc database, API
+- **[STATUS.md](./STATUS.md)** - Trạng thái dự án, checklist hoàn thành
+- **[src/asset/REQUIREMENTS.md](./src/asset/REQUIREMENTS.md)** - Yêu cầu chức năng chi tiết
+- **[src/asset/USE-CASE.md](./src/asset/USE-CASE.md)** - Đặc tả use case
+- **[scheme.txt](./scheme.txt)** - Database schema diagram
 
 ## 🔒 API Endpoints
 
-### Authentication (`/api/auth`)
+### Authentication
+- `POST /api/v1/auth/login` - Đăng nhập
+- `POST /api/v1/auth/logout` - Đăng xuất
+- `GET /api/v1/auth/profile` - Xem thông tin cá nhân
+- `PUT /api/v1/auth/profile` - Cập nhật thông tin cá nhân
 
-#### 1. Login
-**POST** `/api/auth/login`
+### Quản Lý Người Thuê
+- `POST /api/v1/tenants` - Tạo tài khoản người thuê
+- `GET /api/v1/tenants` - Danh sách người thuê
+- `GET /api/v1/tenants/:id` - Chi tiết người thuê
+- `PUT /api/v1/tenants/:id` - Cập nhật người thuê
+- `PUT /api/v1/tenants/:id/toggle-status` - Khóa/Mở khóa tài khoản
 
-Đăng nhập với username và password.
+### Quản Lý Phòng
+- `POST /api/v1/rooms` - Tạo phòng mới
+- `GET /api/v1/rooms` - Danh sách phòng
+- `GET /api/v1/rooms/:id` - Chi tiết phòng
+- `PUT /api/v1/rooms/:id` - Cập nhật phòng
+- `DELETE /api/v1/rooms/:id` - Xóa phòng
+- `GET /api/v1/rooms/my-room` - Xem phòng đang thuê (tenant)
 
-**Request:**
-```json
-{
-  "username": "bckduc",
-  "password": "123456"
-}
-```
+### Quản Lý Hợp Đồng
+- `POST /api/v1/contracts` - Tạo hợp đồng
+- `GET /api/v1/contracts` - Danh sách hợp đồng
+- `GET /api/v1/contracts/:id` - Chi tiết hợp đồng
+- `PUT /api/v1/contracts/:id/terminate` - Kết thúc hợp đồng
 
-**Response (Success - 200):**
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 1,
-    "username": "bckduc",
-    "role": "landlord",
-    "name": "Trần Anh Đức",
-    "email": "bckduc@landlord.local",
-    "phone": "0121020040",
-    "address": null,
-    "idNumber": null,
-    "gender": null,
-    "createdAt": "2024-04-02T10:00:00.000Z"
-  }
-}
-```
+### Quản Lý Dịch Vụ
+- `POST /api/v1/services` - Tạo dịch vụ
+- `GET /api/v1/services` - Danh sách dịch vụ
+- `PUT /api/v1/services/:id` - Cập nhật dịch vụ
+- `DELETE /api/v1/services/:id` - Xóa dịch vụ
+- `POST /api/v1/services/assign` - Gán dịch vụ vào phòng
 
-**Response (Error - 401):**
-```json
-{
-  "success": false,
-  "message": "Invalid username or password"
-}
-```
+### Quản Lý Điện Nước
+- `POST /api/v1/utilities` - Nhập chỉ số điện nước
+- `GET /api/v1/utilities` - Lịch sử điện nước
+- `PUT /api/v1/utilities/config` - Cấu hình đơn giá
 
-**cURL Example:**
-```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"bckduc","password":"123456"}'
-```
+### Quản Lý Hóa Đơn
+- `POST /api/v1/invoices/generate` - Tạo hóa đơn tháng
+- `GET /api/v1/invoices` - Danh sách hóa đơn
+- `GET /api/v1/invoices/:id` - Chi tiết hóa đơn
+- `PUT /api/v1/invoices/:id/confirm-payment` - Xác nhận thanh toán
+- `GET /api/v1/invoices/:id/export` - Xuất hóa đơn PDF
 
----
+### Dashboard
+- `GET /api/v1/dashboard/landlord` - Dashboard chủ nhà
+- `GET /api/v1/dashboard/tenant` - Dashboard người thuê
 
-#### 2. Get Current User Info
-**GET** `/api/auth/me`
+### Thông Báo
+- `GET /api/v1/notifications` - Danh sách thông báo
+- `PUT /api/v1/notifications/:id/read` - Đánh dấu đã đọc
 
-Lấy thông tin user hiện tại (yêu cầu token).
+## 🔐 Authentication
 
-**Headers:**
-```
-Authorization: Bearer <token>
-```
+Hệ thống sử dụng JWT (JSON Web Token) cho authentication:
 
-**Response (200):**
-```json
-{
-  "success": true,
-  "user": {
-    "id": 1,
-    "username": "bckduc",
-    "role": "landlord",
-    "name": "Trần Anh Đức",
-    "email": "bckduc@landlord.local",
-    "phone": "0121020040",
-    "createdAt": "2024-04-02T10:00:00.000Z"
-  }
-}
-```
+1. **Login**: Gửi username + password → Nhận JWT token
+2. **Use Token**: Gửi token trong header cho mỗi request:
+   ```
+   Authorization: Bearer <your_token>
+   ```
+3. **Token Expiry**: Token có hiệu lực 7 ngày
 
-**cURL Example:**
-```bash
-curl -X GET http://localhost:5000/api/auth/me \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-```
-
-#### 3. Logout
-**POST** `/api/auth/logout`
-
-Logout user (xóa token ở client side).
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "message": "Logout successful"
-}
-```
-
----
-
-### Tenant Dashboard (`/api/tenant`)
-
-#### 1. Get Tenant Dashboard
-**GET** `/api/tenant/dashboard`
-
-Lấy dữ liệu dashboard riêng cho người thuê (yêu cầu token + role=tenant).
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": {
-    "profile": {
-      "id": 2,
-      "username": "bck01",
-      "full_name": "Trần Anh Đạt",
-      "phone": "0121020041",
-      "identity_card": "035204009999",
-      "birthday": "2004-10-11",
-      "gender": "male",
-      "address": "Hà Nam",
-      "created_at": "2026-04-03T02:28:04.000Z"
-    },
-    "dashboard": {
-      "role": "tenant",
-      "status": "active",
-      "message": "Chào mừng bạn quay trở lại!"
-    }
-  }
-}
-```
-
-**cURL Example:**
-```bash
-curl -X GET http://localhost:5000/api/tenant/dashboard \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-```
-
----
-
-#### 2. Update Tenant Profile
-**PUT** `/api/tenant/profile`
-
-Cập nhật thông tin profile của người thuê.
-
-**Headers:**
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "full_name": "Trần Anh Đạt",
-  "phone": "0987654321",
-  "identity_card": "035204009999",
-  "birthday": "2004-10-12",
-  "gender": "male",
-  "address": "Hà Nam, Việt Nam"
-}
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "message": "Cập nhật thông tin thành công",
-  "data": {
-    "id": 2,
-    "full_name": "Trần Anh Đạt",
-    "phone": "0987654321",
-    "identity_card": "035204009999",
-    "birthday": "2004-10-12",
-    "gender": "male",
-    "address": "Hà Nam, Việt Nam"
-  }
-}
-```
-
----
-
-## 🔐 Authentication Flow
-
-1. **Login**: Client gửi username + password → Server trả về JWT token
-2. **Store Token**: Client lưu token vào localStorage
-3. **Use Token**: Client gửi token trong header `Authorization: Bearer <token>` cho mỗi request
-4. **Verify**: Server verify token - nếu valid, xử lý request; nếu invalid, trả về 401
-5. **Logout**: Client xóa token từ localStorage
-
----
-
-## 📝 Error Codes
-
-| Code | Message | Ý Nghĩa |
-|------|---------|---------|
-| 200 | OK | Request thành công |
-| 400 | Bad Request | Tham số không hợp lệ |
-| 401 | Unauthorized | Không xác thực hoặc token không hợp lệ |
-| 403 | Forbidden | Quyền hạn không đủ |
-| 404 | Not Found | Resource không tìm thấy |
-| 500 | Server Error | Lỗi server |
-
----
-
-## 🔒 Security Notes
-
-⚠️ **TODO - Production Changes:**
-1. Hash passwords trong database (sử dụng bcrypt)
-2. Đổi JWT_SECRET thành strong secret
-3. Thêm rate limiting
-4. Thêm input validation/sanitization
-5. Thêm HTTPS
-6. Thêm database encryption
-7. Thêm audit logging
-
----
-
-## 📁 Project Structure
+## 📁 Cấu Trúc Project
 
 ```
-bck_manager_backend/
+bck-manager/
 ├── src/
 │   ├── config/
 │   │   └── database.js          # MySQL connection pool
-│   ├── controllers/
-│   │   ├── authController.js    # Auth logic
-│   │   └── tenantController.js  # Tenant dashboard logic
-│   ├── middleware/
-│   │   └── auth.js              # JWT middleware
-│   ├── routes/
-│   │   ├── auth.js              # Auth routes
-│   │   └── tenant.js            # Tenant routes
-│   ├── services/
-│   │   └── authService.js       # Database queries
+│   ├── controllers/             # Request handlers
+│   ├── services/                # Business logic
+│   ├── routes/                  # API routes
+│   ├── middleware/              # Auth, validation
+│   ├── database/
+│   │   ├── schema/              # SQL schema files
+│   │   └── init-database.js     # Auto database setup
 │   └── server.js                # Express app
 ├── .env                         # Environment variables
-├── package.json                 # Dependencies
+├── package.json
+├── SYSTEM_OVERVIEW.md           # System documentation
+├── STATUS.md                    # Project status
 └── README.md                    # This file
 ```
 
----
+## 🎯 Tính Năng Chính
 
-## 🧪 Testing with Postman
+✅ **31 Functional Requirements** đã hoàn thành:
+- Authentication & Authorization
+- Quản lý người dùng (landlord, tenant)
+- Quản lý phòng
+- Quản lý hợp đồng
+- Quản lý dịch vụ
+- Quản lý điện nước
+- Quản lý hóa đơn & thanh toán
+- Dashboard & thống kê
+- Thông báo
 
-### **1️⃣ Tải Postman**
-- Tải từ: https://www.postman.com/downloads/
-- Cài đặt hoặc dùng Web version
+✅ **Non-Functional Requirements**:
+- API response time ≤ 500ms
+- JWT token 7 ngày
+- bcrypt password hashing (salt ≥ 10)
+- Parameterized queries (SQL injection prevention)
+- Pagination support
+- Vietnamese error messages
 
-### **2️⃣ Tenant Login Test**
+## 🧪 Testing
 
-**Bước 1**: Tạo request mới
-- Bấm **+** → New Request
-- Hoặc `Ctrl+N`
+### Test với cURL
 
-**Bước 2**: Cấu hình request
-- **Method**: Chọn **POST** (dropdown)
-- **URL**: `http://localhost:5000/api/auth/login`
+```bash
+# Login
+curl -X POST http://localhost:5000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 
-**Bước 3**: Thêm dữ liệu
-- Tab **Body** → Chọn **raw** → **JSON** (dropdown phải)
-- Nhập:
-```json
-{
-  "username": "bck01",
-  "password": "123456"
-}
+# Get rooms (cần token)
+curl http://localhost:5000/api/v1/rooms \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-**Bước 4**: Gửi request
-- Bấm **Send** (nút xanh)
+### Test với Postman
 
-**Kết quả nhận được:**
-```json
-{
-  "success": true,
-  "message": "Đăng nhập thành công",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 2,
-    "username": "bck01",
-    "role": "tenant",
-    "name": "Trần Anh Đạt",
-    "phone": "0121020041",
-    "gender": "male",
-    "address": "Hà Nam"
-  }
-}
+Import collection từ file `BCK_Manager_API.postman_collection.json`
+
+## 🛠️ Database
+
+### Tự Động Khởi Tạo
+
+Database sẽ **tự động được tạo** khi chạy server lần đầu. Script sẽ:
+1. Kiểm tra database có tồn tại chưa
+2. Tạo database nếu chưa có
+3. Chạy tất cả schema files theo đúng thứ tự
+4. Khởi động server
+
+### Thủ Công (Nếu Cần)
+
+```bash
+mysql -u root -p
+CREATE DATABASE bck_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE bck_manager;
+SOURCE src/database/schema/01-users.sql;
+SOURCE src/database/schema/00-rooms.sql;
+SOURCE src/database/schema/02-contracts.sql;
+SOURCE src/database/schema/03-services.sql;
+SOURCE src/database/schema/04-utilities.sql;
+SOURCE src/database/schema/05-invoices.sql;
+SOURCE src/database/schema/06-notifications.sql;
 ```
 
-**⚠️ Lưu token cho bước tiếp theo** (copy đoạn token dài)
+## 🔒 Security
 
----
+- ✅ Password hashing với bcrypt (salt ≥ 10)
+- ✅ JWT authentication
+- ✅ Parameterized queries (SQL injection prevention)
+- ✅ Input validation
+- ✅ Role-based access control
+- ✅ Error handling
 
-### **3️⃣ Get Tenant Dashboard**
+## 📊 Tech Stack
 
-**Bước 1**: Tạo request mới
-- **Method**: **GET**
-- **URL**: `http://localhost:5000/api/tenant/dashboard`
+- **Runtime**: Node.js v16+
+- **Framework**: Express.js
+- **Database**: MySQL 5.7+
+- **Authentication**: JWT
+- **Password Hashing**: bcrypt
+- **PDF Generation**: pdfkit
 
-**Bước 2**: Thêm Authorization header
-- Tab **Headers** → Thêm:
-  - **Key**: `Authorization`
-  - **Value**: `Bearer <paste_token_here>`
-  
-  Ví dụ:
-  ```
-  Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-  ```
+## 🤝 Contributing
 
-**Bước 3**: Gửi request
-- Bấm **Send**
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-**Kết quả:**
-```json
-{
-  "success": true,
-  "data": {
-    "profile": {
-      "id": 2,
-      "username": "bck01",
-      "full_name": "Trần Anh Đạt",
-      "phone": "0121020041",
-      "identity_card": "035204009999",
-      "birthday": "2004-10-11",
-      "gender": "male",
-      "address": "Hà Nam",
-      "created_at": "2026-04-03T02:28:04.000Z"
-    },
-    "dashboard": {
-      "role": "tenant",
-      "status": "active",
-      "message": "Chào mừng bạn quay trở lại!"
-    }
-  }
-}
-```
+## 📝 License
 
----
+This project is licensed under the MIT License.
 
-### **4️⃣ Get Current User Info**
+## 👥 Contact
 
-**Bước 1**: Tạo request mới
-- **Method**: **GET**
-- **URL**: `http://localhost:5000/api/auth/me`
-
-**Bước 2**: Thêm Authorization header
-- Tab **Headers**:
-  - **Key**: `Authorization`
-  - **Value**: `Bearer <token_của_bạn>`
-
-**Bước 3**: Gửi request
-- Bấm **Send**
+Nếu có vấn đề, vui lòng liên hệ team phát triển.
 
 ---
 
-### **5️⃣ Landlord Login (Optional)**
-
-**Bước 1**: Tạo request mới
-- **Method**: **POST**
-- **URL**: `http://localhost:5000/api/auth/login`
-
-**Bước 2**: Body (raw JSON)
-```json
-{
-  "username": "bckduc",
-  "password": "123456"
-}
-```
-
-**Bước 3**: Gửi request
-
-**Kết quả:**
-```json
-{
-  "success": true,
-  "message": "Đăng nhập thành công",
-  "token": "...",
-  "user": {
-    "id": 1,
-    "username": "bckduc",
-    "role": "landlord",
-    "name": "Trần Anh Đức",
-    "phone": "0121020040"
-  }
-}
-```
-
----
-
-### **📌 Mẹo Sử Dụng Postman**
-
-**Lưu Workspace:**
-- File → Save Workspace → Đặt tên (vd: "BCK Manager")
-- Mọi request sẽ được lưu
-
-**Tạo Collection:**
-- Bấm **Collections** → **Create Collection**
-- Tên: "BCK Manager API"
-- Kéo các request vào collection
-
-**Dùng Variables (nâng cao):**
-- **Pre-request Script**:
-```javascript
-// Lưu token sau khi login
-pm.environment.set("token", pm.response.json().token);
-```
-
-- **Sử dụng trong header**:
-```
-Authorization: Bearer {{token}}
-```
-
----
-
-### **❌ Lỗi Thường Gặp**
-
-| Lỗi | Nguyên Nhân | Cách Khắc Phục |
-|-----|-----------|--------------|
-| `Cannot GET /api/auth/login` | Dùng GET thay vì POST | Chọn **POST** ở dropdown |
-| `401 Unauthorized` | Token sai hoặc hết hạn | Copy lại token từ login response |
-| `Cannot connect to localhost:5000` | Server chưa chạy | Chạy `npm run dev` |
-| `message: "Không tìm thấy route"` | URL sai | Kiểm tra lại URL, không có typo |
-
----
-
-## 🚀 Tiếp Theo
-
-- [x] ✅ Authentication System (Login/Logout/Me)
-- [x] ✅ Tenant Dashboard API
-- [ ] Thêm Landlord Dashboard API
-- [ ] Thêm Room Management API
-- [ ] Thêm Tenant Profile Management
-- [ ] Thêm Bill/Payment API
-- [ ] Thêm Statistics API
-- [ ] Thêm database migration system
-- [ ] Thêm unit tests
-- [ ] Thêm API documentation (Swagger) -->
+**Made with ❤️ by BCK Team**
