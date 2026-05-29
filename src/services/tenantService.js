@@ -2,7 +2,7 @@ import pool from '../config/database.js';
 import bcrypt from 'bcryptjs';
 
 export const createTenant = async (tenantData, landlordId) => {
-  const { username, password, full_name, phone, identity_card, birthday, gender, address } = tenantData;
+  const { username, password, full_name, phone, identity_card, birthday, gender} = tenantData;
 
   if (!username || !password || !full_name) {
     throw new Error('Tên đăng nhập, mật khẩu và họ tên là bắt buộc');
@@ -15,7 +15,6 @@ export const createTenant = async (tenantData, landlordId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Check if username already exists
     const [existingUser] = await connection.query(
       'SELECT id FROM users WHERE username = ?',
       [username]
@@ -25,11 +24,9 @@ export const createTenant = async (tenantData, landlordId) => {
       throw new Error('Tên đăng nhập đã tồn tại');
     }
 
-    // Hash password with bcrypt
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Insert into users table
     const [userResult] = await connection.query(
       'INSERT INTO users (username, password, role, is_active) VALUES (?, ?, ?, ?)',
       [username, hashedPassword, 'tenant', true]
@@ -37,15 +34,13 @@ export const createTenant = async (tenantData, landlordId) => {
 
     const userId = userResult.insertId;
 
-    // Insert into tenant table
     const [tenantResult] = await connection.query(
-      `INSERT INTO tenant (user_id, full_name, phone, identity_card, birthday, gender, address) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, full_name, phone || null, identity_card || null, birthday || null, gender || null, address || null]
+      `INSERT INTO tenant (user_id, full_name, phone, identity_card, birthday, gender) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, full_name, phone || null, identity_card || null, birthday || null, gender || null]
     );
 
     return {
-      id: tenantResult.insertId,
       user_id: userId,
       username,
       full_name,
@@ -53,7 +48,6 @@ export const createTenant = async (tenantData, landlordId) => {
       identity_card: identity_card || null,
       birthday: birthday || null,
       gender: gender || null,
-      address: address || null,
       is_active: true,
     };
   } finally {
@@ -68,7 +62,7 @@ export const getAllTenants = async (landlordId, filters = {}) => {
   try {
     let query = `
       SELECT 
-        t.id, t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.address, t.created_at,
+        t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active, u.created_at as user_created_at,
         CASE WHEN c.status = 'active' THEN TRUE ELSE FALSE END as has_active_contract
       FROM tenant t
@@ -109,7 +103,7 @@ export const searchTenants = async (keyword, landlordId, filters = {}) => {
     const searchPattern = `%${keyword}%`;
     let query = `
       SELECT 
-        t.id, t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.address, t.created_at,
+        t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active,
         CASE WHEN EXISTS (SELECT 1 FROM contracts c2 WHERE c2.tenant_id = t.user_id AND c2.status = "active") THEN TRUE ELSE FALSE END as has_active_contract
       FROM tenant t
@@ -149,7 +143,7 @@ export const getTenantById = async (tenantId) => {
   try {
     const [rows] = await connection.query(
       `SELECT 
-        t.id, t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.address, t.created_at,
+        t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active
       FROM tenant t
       INNER JOIN users u ON t.user_id = u.id
@@ -171,7 +165,6 @@ export const toggleTenantStatus = async (tenantId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Get current status
     const [current] = await connection.query(
       `SELECT u.is_active FROM tenant t INNER JOIN users u ON t.user_id = u.id WHERE t.id = ?`,
       [tenantId]
@@ -195,12 +188,11 @@ export const toggleTenantStatus = async (tenantId) => {
 };
 
 export const updateTenant = async (tenantId, tenantData) => {
-  const { full_name, phone, identity_card, birthday, gender, address } = tenantData;
+  const { full_name, phone, identity_card, birthday, gender} = tenantData;
   
   const connection = await pool.getConnection();
   
   try {
-    // Check if tenant exists
     const [existing] = await connection.query(
       'SELECT * FROM tenant WHERE id = ?',
       [tenantId]
@@ -210,7 +202,6 @@ export const updateTenant = async (tenantId, tenantData) => {
       throw new Error('Không tìm thấy người thuê');
     }
 
-    // Build update query
     const updateFields = [];
     const updateValues = [];
 
@@ -234,10 +225,6 @@ export const updateTenant = async (tenantId, tenantData) => {
       updateFields.push('gender = ?');
       updateValues.push(gender);
     }
-    if (address !== undefined) {
-      updateFields.push('address = ?');
-      updateValues.push(address);
-    }
 
     if (updateFields.length === 0) {
       return existing[0];
@@ -250,7 +237,6 @@ export const updateTenant = async (tenantId, tenantData) => {
     
     await connection.query(query, updateValues);
 
-    // Get updated tenant
     const [updated] = await connection.query(
       'SELECT * FROM tenant WHERE id = ?',
       [tenantId]
@@ -268,7 +254,7 @@ export const getTenantByUserId = async (userId) => {
   try {
     const [rows] = await connection.query(
       `SELECT 
-        t.id, t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.address, t.created_at,
+        t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active
       FROM tenant t
       INNER JOIN users u ON t.user_id = u.id

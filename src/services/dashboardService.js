@@ -4,7 +4,6 @@ export const getLandlordDashboard = async (landlordId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Total rooms
     const [roomsStats] = await connection.query(
       `SELECT 
         COUNT(*) as total,
@@ -15,7 +14,6 @@ export const getLandlordDashboard = async (landlordId) => {
       [landlordId]
     );
 
-    // Active contracts
     const [contractsStats] = await connection.query(
       `SELECT COUNT(*) as active_contracts
        FROM contracts c
@@ -24,7 +22,6 @@ export const getLandlordDashboard = async (landlordId) => {
       [landlordId]
     );
 
-    // Total tenants
     const [tenantsStats] = await connection.query(
       `SELECT COUNT(*) as total_tenants
        FROM tenant t
@@ -32,7 +29,6 @@ export const getLandlordDashboard = async (landlordId) => {
        WHERE u.is_active = TRUE`
     );
 
-    // Unpaid invoices count
     const [unpaidStats] = await connection.query(
       `SELECT COUNT(*) as unpaid_invoices
        FROM invoices i
@@ -42,7 +38,6 @@ export const getLandlordDashboard = async (landlordId) => {
       [landlordId]
     );
 
-    // Monthly revenue (current month)
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
@@ -56,7 +51,6 @@ export const getLandlordDashboard = async (landlordId) => {
       [landlordId, currentMonth, currentYear]
     );
 
-    // Unpaid amount
     const [unpaidAmountStats] = await connection.query(
       `SELECT COALESCE(SUM(i.total), 0) as unpaid_amount
        FROM invoices i
@@ -66,7 +60,6 @@ export const getLandlordDashboard = async (landlordId) => {
       [landlordId]
     );
 
-    // Recent invoices (last 5)
     const [recentInvoices] = await connection.query(
       `SELECT i.*, r.room_number, t.full_name as tenant_name
        FROM invoices i
@@ -108,7 +101,6 @@ export const getTenantDashboard = async (tenantUserId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Get tenant info
     const [tenantInfo] = await connection.query(
       'SELECT * FROM tenant WHERE user_id = ?',
       [tenantUserId]
@@ -120,7 +112,6 @@ export const getTenantDashboard = async (tenantUserId) => {
 
     const tenant = tenantInfo[0];
 
-    // Get active contract
     const [contractInfo] = await connection.query(
       `SELECT c.*, r.room_number, r.floor, r.area, r.price as room_price
        FROM contracts c
@@ -131,7 +122,6 @@ export const getTenantDashboard = async (tenantUserId) => {
 
     const activeContract = contractInfo.length > 0 ? contractInfo[0] : null;
 
-    // Get current month invoice
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
@@ -146,7 +136,6 @@ export const getTenantDashboard = async (tenantUserId) => {
       currentInvoice = invoiceInfo.length > 0 ? invoiceInfo[0] : null;
     }
 
-    // Get unread notifications count
     const [notifStats] = await connection.query(
       'SELECT COUNT(*) as unread FROM notifications WHERE user_id = ? AND is_read = FALSE',
       [tenantUserId]

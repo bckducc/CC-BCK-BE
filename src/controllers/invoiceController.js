@@ -223,7 +223,6 @@ export const exportInvoicePDF = async (req, res) => {
     if (userRole === 'landlord') {
       invoice = await getInvoiceById(id, landlordUserId);
     } else if (userRole === 'tenant') {
-      // Verify tenant owns this invoice
       const invoices = await getTenantInvoices(userId);
       invoice = invoices.find(inv => inv.id === parseInt(id));
       
@@ -234,7 +233,6 @@ export const exportInvoicePDF = async (req, res) => {
         });
       }
       
-      // Get full invoice details
       const pool = (await import('../config/database.js')).default;
       const connection = await pool.getConnection();
       const [rows] = await connection.query(
@@ -254,7 +252,6 @@ export const exportInvoicePDF = async (req, res) => {
       });
     }
 
-    // Generate simple text-based invoice
     const invoiceText = `
 =========================================
          HÓA ĐƠN TIỀN PHÒNG
@@ -305,9 +302,6 @@ Hạn thanh toán: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateS
   }
 };
 
-/**
- * Record a payment for an invoice
- */
 export const recordInvoicePayment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -315,7 +309,6 @@ export const recordInvoicePayment = async (req, res) => {
     const userId = req.user.id;
     const { amount, payment_date, payment_method, transaction_code, note } = req.body;
 
-    // Validate required fields
     if (!amount) {
       return res.status(400).json({
         success: false,
@@ -330,7 +323,6 @@ export const recordInvoicePayment = async (req, res) => {
       });
     }
 
-    // Validate amount is positive
     const paymentAmount = parseFloat(amount);
     if (isNaN(paymentAmount) || paymentAmount <= 0) {
       return res.status(400).json({
@@ -339,7 +331,6 @@ export const recordInvoicePayment = async (req, res) => {
       });
     }
 
-    // Call paymentService.recordPayment
     const paymentData = {
       amount: paymentAmount,
       payment_date,
@@ -367,7 +358,6 @@ export const recordInvoicePayment = async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // Handle specific error types
     if (error.message === 'Invoice not found' || error.message.includes('Không tìm thấy')) {
       return res.status(404).json({
         success: false,
@@ -382,7 +372,6 @@ export const recordInvoicePayment = async (req, res) => {
       });
     }
 
-    // Validation errors (amount exceeds balance, etc.)
     return res.status(400).json({
       success: false,
       message: error.message || 'Ghi nhận thanh toán thất bại',
@@ -390,24 +379,17 @@ export const recordInvoicePayment = async (req, res) => {
   }
 };
 
-/**
- * Get all payments for an invoice
- */
 export const getInvoicePayments = async (req, res) => {
   try {
     const { id } = req.params;
     const landlordUserId = req.user.id;
 
-    // Verify invoice exists and belongs to landlord
     const invoice = await getInvoiceById(id, landlordUserId);
 
-    // Get payments for invoice
     const payments = await paymentService.getPaymentsForInvoice(id);
 
-    // Get total paid
     const totalPaid = await paymentService.getTotalPaymentsForInvoice(id);
 
-    // Calculate remaining balance
     const invoiceTotal = parseFloat(invoice.final_amount);
     const remainingBalance = Math.max(0, invoiceTotal - totalPaid);
 
@@ -423,7 +405,6 @@ export const getInvoicePayments = async (req, res) => {
   } catch (error) {
     console.error('Get invoice payments error:', error);
 
-    // Handle invoice not found
     if (error.message && error.message.includes('not found')) {
       return res.status(404).json({
         success: false,

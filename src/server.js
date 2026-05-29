@@ -42,7 +42,7 @@ app.use('/api/v1/*', apiRateLimiter);
 // API Routes (v1)
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/rooms', roomRoutes);
-app.use('/api/v1/tenant', tenantRoutes);
+app.use('/api/v1/tenants', tenantRoutes);
 app.use('/api/v1/contracts', contractRoutes);
 app.use('/api/v1/services', serviceRoutes);
 app.use('/api/v1/utilities', utilityRoutes);

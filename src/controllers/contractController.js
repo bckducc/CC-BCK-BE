@@ -8,7 +8,7 @@ import {
 
 export const addContract = async (req, res) => {
   try {
-    const landlordUserId = req.user.id; // user_id from JWT token
+    const landlordUserId = req.user.id;
     const { 
       tenant_id, 
       room_id, 
@@ -149,7 +149,6 @@ export const getMyContract = async (req, res) => {
       });
     }
 
-    // For tenant, userId is the tenant_id (user_id in tenant table)
     const contract = await getContractByTenant(userId);
 
     return res.status(200).json({

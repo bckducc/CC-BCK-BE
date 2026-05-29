@@ -1,7 +1,3 @@
--- ========================
--- Create ROOMS Table
--- ========================
-
 CREATE TABLE IF NOT EXISTS rooms (
     id INT AUTO_INCREMENT PRIMARY KEY,
     owner_id INT NOT NULL,
@@ -18,7 +14,6 @@ CREATE TABLE IF NOT EXISTS rooms (
     INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert Sample Data
 INSERT INTO rooms (owner_id, room_number, floor, area, price, status, description) 
 VALUES 
     (1, 'A101', 1, 25.5, 5000000, 'available', 'Phòng một người, view đường phố'),

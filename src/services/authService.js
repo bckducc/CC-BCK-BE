@@ -12,7 +12,7 @@ export const findUserByUsername = async (username) => {
     
     const user = rows[0];
     if (user) {
-      console.log(`Found user: ${user.username} (id: ${user.id})`); // Debug
+      console.log(`Found user: ${user.username} (id: ${user.id})`);
     }
     return user || null;
   } catch (error) {
@@ -49,7 +49,7 @@ export const getUserWithLandlordInfo = async (userId) => {
       throw new Error(`Không tìm thấy người dùng có id ${userId}`);
     }
     
-    console.log('User with landlord info:', user); // Debug
+    console.log('User with landlord info:', user); 
     return user;
   } catch (error) {
     console.error('Database error in getUserWithLandlordInfo:', error);
@@ -84,7 +84,7 @@ export const getUserWithTenantInfo = async (userId) => {
       throw new Error(`Không tìm thấy người dùng có id ${userId}`);
     }
     
-    console.log('User with tenant info:', user); // Debug
+    console.log('User with tenant info:', user);
     return user;
   } catch (error) {
     console.error('Database error in getUserWithTenantInfo:', error);

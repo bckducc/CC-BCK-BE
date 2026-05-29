@@ -7,7 +7,6 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
   try {
     await connection.beginTransaction();
 
-    // Get all active contracts for this landlord
     const [contracts] = await connection.query(
       `SELECT c.*, r.room_number, r.area, r.price as room_price, r.owner_id, c.tenant_id
        FROM contracts c
@@ -24,17 +23,15 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
     const generatedInvoices = [];
 
     for (const contract of contracts) {
-      // Check if invoice already exists with FOR UPDATE lock to prevent race conditions
       const [existingInvoice] = await connection.query(
         'SELECT id FROM invoices WHERE contract_id = ? AND month = ? AND year = ? FOR UPDATE',
         [contract.id, month, year]
       );
 
       if (existingInvoice.length > 0) {
-        continue; // Skip already existing invoice
+        continue;
       }
 
-      // Get utility readings for this room/month
       const [utilityReading] = await connection.query(
         'SELECT * FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
         [contract.room_id, month, year]
@@ -51,9 +48,8 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
         water_fee = water_consumption * util.water_price;
       }
 
-      // Get room services
       const [roomServices] = await connection.query(
-        `SELECT rs.quantity, s.service_name, s.price, s.unit
+        `SELECT rs.quantity, s.service_name, s.price, s.unit, s.is_optional
          FROM room_services rs
          INNER JOIN services s ON rs.service_id = s.id
          WHERE rs.room_id = ?`,
@@ -64,14 +60,12 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
         return sum + (parseFloat(rs.price) * rs.quantity);
       }, 0);
 
-      // Calculate total
       const room_fee = parseFloat(contract.monthly_rent);
-      const other_fees = 0; // Can be customized
-      const discount = 0; // Can be customized
+      const other_fees = 0; 
+      const discount = 0; 
       const total_amount = room_fee + service_fee + electric_fee + water_fee + other_fees;
       const final_amount = total_amount - discount;
 
-      // Calculate due date (5th of next month by default)
       let dueMonth = month + 1;
       let dueYear = year;
       if (dueMonth > 12) {
@@ -80,7 +74,6 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
       }
       const dueDate = `${dueYear}-${String(dueMonth).padStart(2, '0')}-05`;
 
-      // Insert invoice
       const [invoiceResult] = await connection.query(
         `INSERT INTO invoices (
           room_id, tenant_id, contract_id, month, year, 
@@ -117,7 +110,6 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
         final_amount,
       });
 
-      // Send notification to tenant
       await createNotification(contract.tenant_id, {
         title: `Hóa đơn mới - Tháng ${month}/${year}`,
         content: `Hóa đơn phòng ${contract.room_number} tháng ${month}/${year} đã được tạo với tổng tiền ${final_amount.toLocaleString()} VNĐ. Hạn thanh toán: ${dueDate}.`,
@@ -227,7 +219,6 @@ export const confirmPayment = async (invoiceId, landlordUserId) => {
   try {
     await connection.beginTransaction();
 
-    // Check if invoice exists and belongs to landlord with FOR UPDATE lock
     const [invoiceCheck] = await connection.query(
       `SELECT i.*, r.owner_id
        FROM invoices i
@@ -247,19 +238,16 @@ export const confirmPayment = async (invoiceId, landlordUserId) => {
       throw new Error('Bạn không có quyền xác nhận hóa đơn này');
     }
 
-    // Check if invoice is already paid
     if (invoiceCheck[0].status === 'paid') {
       await connection.rollback();
       throw new Error('Hóa đơn này đã được thanh toán');
     }
 
-    // Update invoice status to paid
     await connection.query(
       `UPDATE invoices SET status = 'paid', updated_at = NOW() WHERE id = ?`,
       [invoiceId]
     );
 
-    // Send notification to tenant
     await createNotification(invoiceCheck[0].tenant_id, {
       title: 'Thanh toán thành công',
       content: `Hóa đơn tháng ${invoiceCheck[0].month}/${invoiceCheck[0].year} của bạn đã được xác nhận thanh toán thành công.`,
@@ -292,7 +280,6 @@ export const updateInvoiceStatus = async (invoiceId, status, landlordUserId) => 
   const connection = await pool.getConnection();
   
   try {
-    // Check if invoice exists and belongs to landlord
     const [invoiceCheck] = await connection.query(
       `SELECT i.*, r.owner_id
        FROM invoices i
@@ -309,7 +296,6 @@ export const updateInvoiceStatus = async (invoiceId, status, landlordUserId) => 
       throw new Error('Bạn không có quyền cập nhật hóa đơn này');
     }
 
-    // Update invoice status
     await connection.query(
       `UPDATE invoices SET status = ?, updated_at = NOW() WHERE id = ?`,
       [status, invoiceId]

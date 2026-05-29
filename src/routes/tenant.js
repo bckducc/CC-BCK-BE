@@ -4,10 +4,8 @@ import { authMiddleware, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// All tenant routes require authentication and tenant role
 router.use(authMiddleware);
 
-// ========== TENANT MANAGEMENT (Landlord only) ==========
 router.post('/', authMiddleware, requireRole('landlord'), async (req, res, next) => {
   const { createNewTenant } = await import('../controllers/tenantController.js');
   createNewTenant(req, res, next);
@@ -33,7 +31,6 @@ router.put('/:id', authMiddleware, requireRole('landlord'), async (req, res, nex
   editTenant(req, res, next);
 });
 
-// ========== TENANT PROFILE (Tenant personal) ==========
 router.get('/dashboard', authMiddleware, requireRole('tenant'), getTenantDashboard);
 router.put('/profile', authMiddleware, updateTenantProfile);
 

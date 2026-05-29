@@ -60,7 +60,6 @@ export const markAsRead = async (notificationId, userId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Check if notification belongs to user
     const [existing] = await connection.query(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?',
       [notificationId, userId]

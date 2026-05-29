@@ -1,10 +1,5 @@
 import pool from '../config/database.js';
 
-/**
- * Get total payments for an invoice
- * @param {number} invoiceId - Invoice ID
- * @returns {Promise<number>} Total amount paid
- */
 export const getTotalPaymentsForInvoice = async (invoiceId) => {
   const connection = await pool.getConnection();
   
@@ -20,11 +15,6 @@ export const getTotalPaymentsForInvoice = async (invoiceId) => {
   }
 };
 
-/**
- * Get all payments for an invoice
- * @param {number} invoiceId - Invoice ID
- * @returns {Promise<Array>} Array of payment records
- */
 export const getPaymentsForInvoice = async (invoiceId) => {
   const connection = await pool.getConnection();
   
@@ -44,16 +34,10 @@ export const getPaymentsForInvoice = async (invoiceId) => {
   }
 };
 
-/**
- * Get remaining balance for an invoice
- * @param {number} invoiceId - Invoice ID
- * @returns {Promise<number>} Remaining balance
- */
 export const getRemainingBalance = async (invoiceId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Get invoice final_amount
     const [invoiceRows] = await connection.query(
       'SELECT final_amount FROM invoices WHERE id = ?',
       [invoiceId]
@@ -65,10 +49,8 @@ export const getRemainingBalance = async (invoiceId) => {
     
     const invoiceTotal = parseFloat(invoiceRows[0].final_amount);
     
-    // Get total payments
     const totalPaid = await getTotalPaymentsForInvoice(invoiceId);
     
-    // Calculate remaining balance
     const remainingBalance = invoiceTotal - totalPaid;
     
     return Math.max(0, remainingBalance); // Ensure non-negative
@@ -77,24 +59,9 @@ export const getRemainingBalance = async (invoiceId) => {
   }
 };
 
-/**
- * Record a payment for an invoice
- * @param {number} invoiceId - Invoice ID
- * @param {number} landlordUserId - Landlord user_id (for authorization)
- * @param {object} paymentData - Payment details
- * @param {number} paymentData.amount - Payment amount
- * @param {string} paymentData.payment_date - Payment date (YYYY-MM-DD)
- * @param {string} paymentData.payment_method - Payment method ('cash' or 'bank_transfer')
- * @param {string} paymentData.transaction_code - Optional transaction code
- * @param {string} paymentData.note - Optional note
- * @param {number} paymentData.received_by - User ID recording payment
- * @returns {Promise<object>} Payment record and updated invoice
- * @throws {Error} If validation fails
- */
 export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
   const { amount, payment_date, payment_method, transaction_code, note, received_by } = paymentData;
   
-  // Validate required fields
   if (!amount || amount <= 0) {
     throw new Error('Số tiền thanh toán phải lớn hơn 0');
   }
@@ -103,13 +70,11 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     throw new Error('Ngày thanh toán là bắt buộc');
   }
 
-  // Validate payment_method
   const validMethods = ['cash', 'bank_transfer'];
   if (payment_method && !validMethods.includes(payment_method)) {
     throw new Error('Phương thức thanh toán không hợp lệ');
   }
   
-  // Validate payment date is not in the future
   const paymentDateObj = new Date(payment_date);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -123,7 +88,6 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
   try {
     await connection.beginTransaction();
     
-    // Check if invoice exists and belongs to landlord
     const [invoiceCheck] = await connection.query(
       `SELECT i.*, r.owner_id
        FROM invoices i
@@ -143,7 +107,6 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     const invoice = invoiceCheck[0];
     const invoiceTotal = parseFloat(invoice.final_amount);
     
-    // Get current total payments
     const [paymentSumRows] = await connection.query(
       'SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = ?',
       [invoiceId]
@@ -152,14 +115,12 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     const totalPaid = parseFloat(paymentSumRows[0].total_paid);
     const remainingBalance = invoiceTotal - totalPaid;
     
-    // Validate payment amount does not exceed remaining balance
     if (amount > remainingBalance) {
       throw new Error(
         `Số tiền thanh toán ${amount} vượt quá số tiền còn lại ${remainingBalance.toFixed(2)}`
       );
     }
     
-    // Insert payment record
     const [paymentResult] = await connection.query(
       `INSERT INTO payments (invoice_id, amount, payment_date, payment_method, transaction_code, note, received_by, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
@@ -176,10 +137,8 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     
     const paymentId = paymentResult.insertId;
     
-    // Calculate new total paid
     const newTotalPaid = totalPaid + amount;
     
-    // Update invoice status if fully paid
     if (newTotalPaid >= invoiceTotal) {
       await connection.query(
         'UPDATE invoices SET status = ?, updated_at = NOW() WHERE id = ?',
@@ -191,7 +150,6 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     
     await connection.commit();
     
-    // Get the created payment record
     const [paymentRows] = await connection.query(
       'SELECT * FROM payments WHERE id = ?',
       [paymentId]

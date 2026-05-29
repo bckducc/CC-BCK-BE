@@ -1,15 +1,11 @@
 import pool from '../config/database.js';
 
-/**
- * Update landlord profile information
- */
 export const updateLandlordProfile = async (userId, landlordData) => {
   const { full_name, phone, bank_name, bank_account_number, bank_account_name } = landlordData;
   
   const connection = await pool.getConnection();
   
   try {
-    // Check if landlord exists
     const [existing] = await connection.query(
       'SELECT * FROM landlord WHERE user_id = ?',
       [userId]
@@ -19,7 +15,6 @@ export const updateLandlordProfile = async (userId, landlordData) => {
       throw new Error('Không tìm thấy thông tin chủ nhà');
     }
 
-    // Build update query
     const updateFields = [];
     const updateValues = [];
 
@@ -55,7 +50,6 @@ export const updateLandlordProfile = async (userId, landlordData) => {
     
     await connection.query(query, updateValues);
 
-    // Get updated landlord record
     const [updated] = await connection.query(
       'SELECT * FROM landlord WHERE user_id = ?',
       [userId]

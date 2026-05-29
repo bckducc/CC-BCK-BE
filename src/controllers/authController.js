@@ -6,7 +6,6 @@ export const login = async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Validation
     if (!username || !password) {
       return res.status(400).json({
         success: false,
@@ -14,22 +13,20 @@ export const login = async (req, res) => {
       });
     }
 
-    console.log(`Login attempt: ${username}`); // Debug
+    console.log(`Login attempt: ${username}`);
 
-    // Find user
     const user = await findUserByUsername(username);
 
     if (!user) {
-      console.log(`User not found: ${username}`); // Debug
+      console.log(`User not found: ${username}`);
       return res.status(401).json({
         success: false,
         message: 'Tên tài khoản hoặc mật khẩu không chính xác',
       });
     }
 
-    console.log(`User found: ${user.username}`); // Debug
+    console.log(`User found: ${user.username}`);
 
-    // Check if user is active
     if (!user.is_active) {
       return res.status(401).json({
         success: false,
@@ -37,32 +34,28 @@ export const login = async (req, res) => {
       });
     }
 
-    // Validate password with bcrypt
     let passwordMatch = false;
     if (user.password && user.password.startsWith('$2')) {
-      // Hashed password in database
       passwordMatch = await bcrypt.compare(password, user.password);
     } else {
-      // Legacy plain text password (for backward compatibility)
       passwordMatch = password === user.password;
     }
 
     if (!passwordMatch) {
-      console.log(`Password mismatch for user: ${username}`); // Debug
+      console.log(`Password mismatch for user: ${username}`);  
       return res.status(401).json({
         success: false,
         message: 'Tên tài khoản hoặc mật khẩu không chính xác',
       });
     }
 
-    // Get user info based on role
     let userWithInfo;
     
     if (user.role === 'landlord') {
       userWithInfo = await getUserWithLandlordInfo(user.id);
       
       if (!userWithInfo) {
-        console.log(`Landlord info not found for user id: ${user.id}`); // Debug
+        console.log(`Landlord info not found for user id: ${user.id}`);  
         return res.status(404).json({
           success: false,
           message: 'Thông tin chủ nhà không tìm thấy',
@@ -72,7 +65,7 @@ export const login = async (req, res) => {
       userWithInfo = await getUserWithTenantInfo(user.id);
       
       if (!userWithInfo) {
-        console.log(`Tenant info not found for user id: ${user.id}`); // Debug
+        console.log(`Tenant info not found for user id: ${user.id}`);  
         return res.status(404).json({
           success: false,
           message: 'Thông tin người thuê không tìm thấy',
@@ -85,7 +78,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // Generate JWT token with landlord_id if applicable
     let token;
     if (user.role === 'landlord' && userWithInfo.landlord_id) {
       token = generateToken(user.id, user.username, user.role, userWithInfo.landlord_id);
@@ -93,7 +85,7 @@ export const login = async (req, res) => {
       token = generateToken(user.id, user.username, user.role);
     }
 
-    console.log(`Login successful for user: ${username}`); // Debug
+    console.log(`Login successful for user: ${username}`);  
 
     return res.status(200).json({
       success: true,
@@ -184,7 +176,6 @@ export const me = async (req, res) => {
 
 export const logout = (req, res) => {
   try {
-    // JWT is stateless, logout is handled on client side by removing token
     return res.status(200).json({
       success: true,
       message: 'Đăng xuất thành công',

@@ -6,12 +6,9 @@ import {
   deleteRoom,
 } from '../services/roomService.js';
 
-/**
- * Get all rooms for the authenticated landlord
- */
 export const getAllRooms = async (req, res) => {
   try {
-    const ownerId = req.user.id; // user_id from JWT token (landlord's user_id)
+    const ownerId = req.user.id;
 
     if (!ownerId) {
       return res.status(403).json({
@@ -49,9 +46,6 @@ export const getAllRooms = async (req, res) => {
   }
 };
 
-/**
- * Get a specific room by ID
- */
 export const getRoom = async (req, res) => {
   try {
     const { id } = req.params;
@@ -92,9 +86,6 @@ export const getRoom = async (req, res) => {
   }
 };
 
-/**
- * Create a new room
- */
 export const addRoom = async (req, res) => {
   try {
     const ownerId = req.user.id;
@@ -129,9 +120,6 @@ export const addRoom = async (req, res) => {
   }
 };
 
-/**
- * Update a room
- */
 export const modifyRoom = async (req, res) => {
   try {
     const { id } = req.params;
@@ -168,9 +156,6 @@ export const modifyRoom = async (req, res) => {
   }
 };
 
-/**
- * Delete a room
- */
 export const removeRoom = async (req, res) => {
   try {
     const { id } = req.params;

@@ -1,7 +1,3 @@
--- ========================
--- Contracts table
--- ========================
-
 CREATE TABLE IF NOT EXISTS contracts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     room_id INT NOT NULL,

@@ -1,8 +1,3 @@
--- ========================
--- Invoice and Payments tables
--- ========================
-
--- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (
     id INT AUTO_INCREMENT PRIMARY KEY,
     room_id INT NOT NULL,
@@ -34,7 +29,6 @@ CREATE TABLE IF NOT EXISTS invoices (
     INDEX idx_due_date (due_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Payments table
 CREATE TABLE IF NOT EXISTS payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     invoice_id INT NOT NULL,

@@ -18,10 +18,8 @@ export const createContract = async (contractData, landlordUserId) => {
     throw new Error('Người thuê, phòng, ngày bắt đầu, ngày kết thúc, tiền cọc và tiền thuê là bắt buộc');
   }
 
-  // Validate start date is not in the past
   validateNotPastDate(start_date);
 
-  // Validate end date is after start date
   if (new Date(end_date) <= new Date(start_date)) {
     throw new Error('Ngày kết thúc phải sau ngày bắt đầu');
   }
@@ -29,10 +27,8 @@ export const createContract = async (contractData, landlordUserId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Start transaction for atomic operations
     await connection.beginTransaction();
 
-    // Check if tenant exists (tenant_id is user_id in tenant table)
     const [tenantCheck] = await connection.query(
       `SELECT t.*, u.is_active 
        FROM tenant t 
@@ -49,7 +45,6 @@ export const createContract = async (contractData, landlordUserId) => {
       throw new Error('Người thuê đã bị vô hiệu hóa');
     }
 
-    // Check if room exists and belongs to landlord
     const [roomCheck] = await connection.query(
       'SELECT * FROM rooms WHERE id = ? AND owner_id = ?',
       [room_id, landlordUserId]
@@ -63,7 +58,6 @@ export const createContract = async (contractData, landlordUserId) => {
       throw new Error('Phòng không trống, hiện đang được thuê');
     }
 
-    // Check if tenant already has active contract with FOR UPDATE lock
     const [tenantContracts] = await connection.query(
       'SELECT id FROM contracts WHERE tenant_id = ? AND status = "active" FOR UPDATE',
       [tenant_id]
@@ -73,7 +67,6 @@ export const createContract = async (contractData, landlordUserId) => {
       throw new Error('Người thuê này đã có phòng');
     }
 
-    // Check if room already has active contract with FOR UPDATE lock
     const [roomContracts] = await connection.query(
       'SELECT id FROM contracts WHERE room_id = ? AND status = "active" FOR UPDATE',
       [room_id]
@@ -83,7 +76,6 @@ export const createContract = async (contractData, landlordUserId) => {
       throw new Error('Phòng đã có người thuê');
     }
 
-    // Check if contract_code is unique (if provided)
     if (contract_code) {
       const [codeCheck] = await connection.query(
         'SELECT id FROM contracts WHERE contract_code = ?',
@@ -95,7 +87,6 @@ export const createContract = async (contractData, landlordUserId) => {
       }
     }
 
-    // Insert contract
     const [result] = await connection.query(
       `INSERT INTO contracts (room_id, tenant_id, contract_code, start_date, end_date, deposit_amount, monthly_rent, terms, signed_date, status, created_at) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
@@ -104,16 +95,13 @@ export const createContract = async (contractData, landlordUserId) => {
 
     const contractId = result.insertId;
 
-    // Update room status to rented
     await connection.query(
       'UPDATE rooms SET status = "rented" WHERE id = ?',
       [room_id]
     );
 
-    // Commit transaction
     await connection.commit();
 
-    // Get created contract
     const [newContract] = await connection.query(
       'SELECT * FROM contracts WHERE id = ?',
       [contractId]
@@ -121,7 +109,6 @@ export const createContract = async (contractData, landlordUserId) => {
 
     return newContract[0];
   } catch (error) {
-    // Rollback transaction on error
     await connection.rollback();
     throw error;
   } finally {
@@ -221,10 +208,8 @@ export const terminateContract = async (contractId, landlordUserId) => {
   const connection = await pool.getConnection();
   
   try {
-    // Start transaction for atomic operations
     await connection.beginTransaction();
 
-    // Get contract details with FOR UPDATE lock to prevent race conditions
     const [contractCheck] = await connection.query(
       `SELECT c.*, r.owner_id 
        FROM contracts c
@@ -242,24 +227,20 @@ export const terminateContract = async (contractId, landlordUserId) => {
       throw new Error('Bạn không có quyền kết thúc hợp đồng này');
     }
 
-    // Check contract status before updating
     if (contractCheck[0].status === 'terminated') {
       throw new Error('Hợp đồng đã được kết thúc trước đó');
     }
 
-    // Update contract status
     await connection.query(
       `UPDATE contracts SET status = 'terminated' WHERE id = ?`,
       [contractId]
     );
 
-    // Update room status to available atomically
     await connection.query(
       'UPDATE rooms SET status = "available" WHERE id = ?',
       [contractCheck[0].room_id]
     );
 
-    // Commit transaction
     await connection.commit();
 
     return { 
@@ -267,7 +248,6 @@ export const terminateContract = async (contractId, landlordUserId) => {
       status: 'terminated',
     };
   } catch (error) {
-    // Rollback transaction on error
     await connection.rollback();
     throw error;
   } finally {

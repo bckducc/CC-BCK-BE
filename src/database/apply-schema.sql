@@ -12,7 +12,6 @@ DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS payments;
 DROP TABLE IF EXISTS invoices;
 DROP TABLE IF EXISTS utilities;
-DROP TABLE IF EXISTS utility_config;
 DROP TABLE IF EXISTS room_services;
 DROP TABLE IF EXISTS services;
 DROP TABLE IF EXISTS contracts;
@@ -45,9 +44,6 @@ SOURCE src/database/schema/05-invoices.sql;
 
 -- Step 7: Create notifications table
 SOURCE src/database/schema/06-notifications.sql;
-
--- Step 8: Create utility_config table
-SOURCE src/database/schema/07-utility-config.sql;
 
 -- ========================
 -- Verification Queries
@@ -88,8 +84,6 @@ UNION ALL
 SELECT 'contracts', COUNT(*) FROM contracts
 UNION ALL
 SELECT 'utilities', COUNT(*) FROM utilities
-UNION ALL
-SELECT 'utility_config', COUNT(*) FROM utility_config
 UNION ALL
 SELECT 'invoices', COUNT(*) FROM invoices
 UNION ALL

@@ -1,127 +1,193 @@
 import pool from '../config/database.js';
-import { validateUtilityReading, validateNotFutureDate } from '../utils/validators.js';
-import { getUtilityConfig } from './utilityConfigService.js';
+import { validateUtilityReading, validateNotFutureDate, validatePrice } from '../utils/validators.js';
 
-/**
- * Create or update utility reading for a room/month/year
- */
-export const recordUtilityReading = async (utilityData, landlordUserId) => {
-  let {
-    room_id,
-    month,
-    year,
-    electric_old,
-    electric_new,
-    electric_price,
-    water_old,
-    water_new,
-    water_price,
-    recorded_date,
-    note
-  } = utilityData;
 
-  // Validation
-  if (!room_id || !month || !year) {
-    throw new Error('Phòng, tháng, năm là bắt buộc');
+const UTILITY_COLUMNS = `
+  id, room_id, month, year,
+  electric_old, electric_new, electric_price,
+  water_old, water_new, water_price,
+  recorded_date, note
+`;
+
+const normalizePositiveInt = (value, fieldName) => {
+  const numberValue = Number(value);
+
+  if (!Number.isInteger(numberValue) || numberValue < 1) {
+    throw new Error(`${fieldName} khong hop le`);
   }
 
-  if (month < 1 || month > 12) {
-    throw new Error('Tháng phải từ 1 đến 12');
+  return numberValue;
+};
+
+const normalizeMeterValue = (value, fieldName) => {
+  if (value === undefined || value === null || value === '') {
+    return 0;
   }
 
-  // Validate utility readings using validators
-  validateUtilityReading(electric_old, electric_new);
-  validateUtilityReading(water_old, water_new);
+  const numberValue = Number(value);
 
-  // Validate that month/year is not in the future
+  if (!Number.isInteger(numberValue) || numberValue < 0) {
+    throw new Error(`${fieldName} phai la so nguyen khong am`);
+  }
+
+  return numberValue;
+};
+
+const normalizePrice = (value, fieldName) => {
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    throw new Error(`${fieldName} phai la so hop le`);
+  }
+
+  validatePrice(numberValue, fieldName);
+
+  return numberValue;
+};
+
+const normalizeRecordedDate = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error('Ngay ghi nhan phai co dinh dang YYYY-MM-DD');
+  }
+
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new Error('Ngay ghi nhan khong hop le');
+  }
+
+  return value;
+};
+
+const normalizeNote = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error('Ghi chu khong hop le');
+  }
+
+  return value.trim() || null;
+};
+
+const buildUtilityPayload = async (utilityData, landlordUserId) => {
+  const roomId = normalizePositiveInt(utilityData.room_id, 'Phong');
+  const month = normalizePositiveInt(utilityData.month, 'Thang');
+  const year = normalizePositiveInt(utilityData.year, 'Nam');
+
+  if (month > 12) {
+    throw new Error('Thang phai tu 1 den 12');
+  }
+
   validateNotFutureDate(month, year);
 
-  // Auto-retrieve prices from config if not provided
-  if (electric_price === undefined || water_price === undefined) {
-    const config = await getUtilityConfig(landlordUserId);
-    if (electric_price === undefined) {
-      electric_price = config.electric_price;
-    }
-    if (water_price === undefined) {
-      water_price = config.water_price;
-    }
-  }
+  const electricOld = normalizeMeterValue(utilityData.electric_old, 'Chi so dien cu');
+  const electricNew = normalizeMeterValue(utilityData.electric_new, 'Chi so dien moi');
+  const waterOld = normalizeMeterValue(utilityData.water_old, 'Chi so nuoc cu');
+  const waterNew = normalizeMeterValue(utilityData.water_new, 'Chi so nuoc moi');
 
+  validateUtilityReading(electricOld, electricNew);
+  validateUtilityReading(waterOld, waterNew);
+
+  const electricPrice = normalizePrice(utilityData.electric_price, 'Gia dien');
+  const waterPrice = normalizePrice(utilityData.water_price, 'Gia nuoc');
+  return {
+    room_id: roomId,
+    month,
+    year,
+    electric_old: electricOld,
+    electric_new: electricNew,
+    electric_price: electricPrice,
+    water_old: waterOld,
+    water_new: waterNew,
+    water_price: waterPrice,
+    recorded_date: normalizeRecordedDate(utilityData.recorded_date),
+    note: normalizeNote(utilityData.note),
+  };
+};
+
+export const recordUtilityReading = async (utilityData, landlordUserId) => {
+  const utility = await buildUtilityPayload(utilityData, landlordUserId);
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    // Check if room exists and belongs to landlord with FOR UPDATE lock
     const [roomCheck] = await connection.query(
       'SELECT id FROM rooms WHERE id = ? AND owner_id = ? FOR UPDATE',
-      [room_id, landlordUserId]
+      [utility.room_id, landlordUserId]
     );
 
     if (roomCheck.length === 0) {
-      throw new Error('Phòng không tồn tại hoặc không thuộc về bạn');
+      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
     }
 
-    // Check if utility reading already exists with FOR UPDATE lock
     const [existing] = await connection.query(
       'SELECT id FROM utilities WHERE room_id = ? AND month = ? AND year = ? FOR UPDATE',
-      [room_id, month, year]
+      [utility.room_id, utility.month, utility.year]
     );
 
     let result;
+
     if (existing.length > 0) {
-      // Update existing record
       await connection.query(
-        `UPDATE utilities 
+        `UPDATE utilities
          SET electric_old = ?, electric_new = ?, electric_price = ?,
              water_old = ?, water_new = ?, water_price = ?,
              recorded_date = ?, note = ?
          WHERE room_id = ? AND month = ? AND year = ?`,
         [
-          electric_old || 0,
-          electric_new || 0,
-          electric_price,
-          water_old || 0,
-          water_new || 0,
-          water_price,
-          recorded_date || new Date().toISOString().split('T')[0],
-          note || null,
-          room_id,
-          month,
-          year
+          utility.electric_old,
+          utility.electric_new,
+          utility.electric_price,
+          utility.water_old,
+          utility.water_new,
+          utility.water_price,
+          utility.recorded_date,
+          utility.note,
+          utility.room_id,
+          utility.month,
+          utility.year,
         ]
       );
 
       const [updated] = await connection.query(
-        'SELECT * FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-        [room_id, month, year]
+        `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE room_id = ? AND month = ? AND year = ?`,
+        [utility.room_id, utility.month, utility.year]
       );
       result = updated[0];
     } else {
-      // Insert new record
       const [insertResult] = await connection.query(
-        `INSERT INTO utilities (room_id, month, year, electric_old, electric_new, electric_price, water_old, water_new, water_price, recorded_date, note, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        `INSERT INTO utilities (
+          room_id, month, year,
+          electric_old, electric_new, electric_price,
+          water_old, water_new, water_price,
+          recorded_date, note
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          room_id,
-          month,
-          year,
-          electric_old || 0,
-          electric_new || 0,
-          electric_price,
-          water_old || 0,
-          water_new || 0,
-          water_price,
-          recorded_date || new Date().toISOString().split('T')[0],
-          note || null
+          utility.room_id,
+          utility.month,
+          utility.year,
+          utility.electric_old,
+          utility.electric_new,
+          utility.electric_price,
+          utility.water_old,
+          utility.water_new,
+          utility.water_price,
+          utility.recorded_date,
+          utility.note,
         ]
       );
 
-      const [newUtility] = await connection.query(
-        'SELECT * FROM utilities WHERE id = ?',
+      const [created] = await connection.query(
+        `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE id = ?`,
         [insertResult.insertId]
       );
-      result = newUtility[0];
+      result = created[0];
     }
 
     await connection.commit();
@@ -134,26 +200,25 @@ export const recordUtilityReading = async (utilityData, landlordUserId) => {
   }
 };
 
-/**
- * Get utility reading for a specific room/month/year
- */
 export const getUtilityReading = async (roomId, month, year, landlordUserId) => {
+  const normalizedRoomId = normalizePositiveInt(roomId, 'Phong');
+  const normalizedMonth = normalizePositiveInt(month, 'Thang');
+  const normalizedYear = normalizePositiveInt(year, 'Nam');
   const connection = await pool.getConnection();
 
   try {
-    // Check if room belongs to landlord
     const [roomCheck] = await connection.query(
-      'SELECT * FROM rooms WHERE id = ? AND owner_id = ?',
-      [roomId, landlordUserId]
+      'SELECT id FROM rooms WHERE id = ? AND owner_id = ?',
+      [normalizedRoomId, landlordUserId]
     );
 
     if (roomCheck.length === 0) {
-      throw new Error('Phòng không tồn tại hoặc không thuộc về bạn');
+      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
     }
 
     const [rows] = await connection.query(
-      'SELECT * FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-      [roomId, month, year]
+      `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE room_id = ? AND month = ? AND year = ?`,
+      [normalizedRoomId, normalizedMonth, normalizedYear]
     );
 
     return rows[0] || null;
@@ -162,26 +227,23 @@ export const getUtilityReading = async (roomId, month, year, landlordUserId) => 
   }
 };
 
-/**
- * Get all utility readings for a room
- */
 export const getUtilityReadingsByRoom = async (roomId, landlordUserId) => {
+  const normalizedRoomId = normalizePositiveInt(roomId, 'Phong');
   const connection = await pool.getConnection();
 
   try {
-    // Check if room belongs to landlord
     const [roomCheck] = await connection.query(
-      'SELECT * FROM rooms WHERE id = ? AND owner_id = ?',
-      [roomId, landlordUserId]
+      'SELECT id FROM rooms WHERE id = ? AND owner_id = ?',
+      [normalizedRoomId, landlordUserId]
     );
 
     if (roomCheck.length === 0) {
-      throw new Error('Phòng không tồn tại hoặc không thuộc về bạn');
+      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
     }
 
     const [rows] = await connection.query(
-      'SELECT * FROM utilities WHERE room_id = ? ORDER BY year DESC, month DESC',
-      [roomId]
+      `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE room_id = ? ORDER BY year DESC, month DESC`,
+      [normalizedRoomId]
     );
 
     return rows;
@@ -190,16 +252,17 @@ export const getUtilityReadingsByRoom = async (roomId, landlordUserId) => {
   }
 };
 
-/**
- * Get all utility readings for a landlord (all rooms)
- */
 export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
   const { month, year, room_id } = filters;
   const connection = await pool.getConnection();
 
   try {
     let query = `
-      SELECT u.*, r.room_number, r.floor
+      SELECT u.id, u.room_id, u.month, u.year,
+             u.electric_old, u.electric_new, u.electric_price,
+             u.water_old, u.water_new, u.water_price,
+             u.recorded_date, u.note,
+             r.room_number, r.floor
       FROM utilities u
       INNER JOIN rooms r ON u.room_id = r.id
       WHERE r.owner_id = ?
@@ -208,17 +271,17 @@ export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
 
     if (month) {
       query += ' AND u.month = ?';
-      params.push(parseInt(month));
+      params.push(normalizePositiveInt(month, 'Thang'));
     }
 
     if (year) {
       query += ' AND u.year = ?';
-      params.push(parseInt(year));
+      params.push(normalizePositiveInt(year, 'Nam'));
     }
 
     if (room_id) {
       query += ' AND u.room_id = ?';
-      params.push(room_id);
+      params.push(normalizePositiveInt(room_id, 'Phong'));
     }
 
     query += ' ORDER BY u.year DESC, u.month DESC, r.room_number ASC';
@@ -230,40 +293,41 @@ export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
   }
 };
 
-/**
- * Delete utility reading
- */
 export const deleteUtilityReading = async (roomId, month, year, landlordUserId) => {
+  const normalizedRoomId = normalizePositiveInt(roomId, 'Phong');
+  const normalizedMonth = normalizePositiveInt(month, 'Thang');
+  const normalizedYear = normalizePositiveInt(year, 'Nam');
   const connection = await pool.getConnection();
 
   try {
-    // Check if room belongs to landlord
     const [roomCheck] = await connection.query(
-      'SELECT * FROM rooms WHERE id = ? AND owner_id = ?',
-      [roomId, landlordUserId]
+      'SELECT id FROM rooms WHERE id = ? AND owner_id = ?',
+      [normalizedRoomId, landlordUserId]
     );
 
     if (roomCheck.length === 0) {
-      throw new Error('Phòng không tồn tại hoặc không thuộc về bạn');
+      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
     }
 
-    // Check if utility reading exists
     const [existing] = await connection.query(
-      'SELECT * FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-      [roomId, month, year]
+      'SELECT id FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
+      [normalizedRoomId, normalizedMonth, normalizedYear]
     );
 
     if (existing.length === 0) {
-      throw new Error('Không tìm thấy chỉ số điện nước');
+      throw new Error('Khong tim thay chi so dien nuoc');
     }
 
-    // Delete utility reading
     await connection.query(
       'DELETE FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-      [roomId, month, year]
+      [normalizedRoomId, normalizedMonth, normalizedYear]
     );
 
-    return { message: 'Xóa chỉ số điện nước thành công' };
+    return {
+      room_id: normalizedRoomId,
+      month: normalizedMonth,
+      year: normalizedYear,
+    };
   } finally {
     connection.release();
   }

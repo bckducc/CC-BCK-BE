@@ -1,8 +1,3 @@
--- ========================
--- Services tables
--- ========================
-
--- Services table
 CREATE TABLE IF NOT EXISTS services (
     id INT AUTO_INCREMENT PRIMARY KEY,
     service_name VARCHAR(100) NOT NULL,
@@ -15,7 +10,6 @@ CREATE TABLE IF NOT EXISTS services (
     INDEX idx_is_optional (is_optional)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Room services (services assigned to specific rooms)
 CREATE TABLE IF NOT EXISTS room_services (
     id INT AUTO_INCREMENT PRIMARY KEY,
     room_id INT NOT NULL,

@@ -1,10 +1,3 @@
--- ========================
--- Database Schema: BCK Manager
--- ========================
--- Users, Landlord, Tenant tables
--- ========================
-
--- Users table
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
@@ -18,7 +11,6 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_is_active (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Landlord table
 CREATE TABLE IF NOT EXISTS landlord (
     user_id INT PRIMARY KEY,
     full_name VARCHAR(100) NOT NULL,
@@ -32,7 +24,6 @@ CREATE TABLE IF NOT EXISTS landlord (
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Tenant table
 CREATE TABLE IF NOT EXISTS tenant (
     user_id INT PRIMARY KEY,
     full_name VARCHAR(100) NOT NULL,
@@ -49,8 +40,6 @@ CREATE TABLE IF NOT EXISTS tenant (
     INDEX idx_phone (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert sample landlord user (password: admin123)
--- Note: In production, use bcrypt hashed password
 INSERT INTO users (username, password, role, is_active) 
 VALUES ('admin', '$2a$10$xKZNyWBNXbKQ3eFKvhLfueL3rK8F7aGz7JyJvK8L5Z6W7H8J9K0L', 'landlord', TRUE)
 ON DUPLICATE KEY UPDATE username = username;

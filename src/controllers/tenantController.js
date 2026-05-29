@@ -12,7 +12,7 @@ import { getUserWithTenantInfo } from '../services/authService.js';
 export const createNewTenant = async (req, res) => {
   try {
     const landlordId = req.user.landlord_id;
-    const { username, password, full_name, phone, identity_card, birthday, gender, address } = req.body;
+    const { username, password, full_name, phone, identity_card, birthday, gender} = req.body;
 
     if (!username || !password || !full_name) {
       return res.status(400).json({
@@ -144,7 +144,7 @@ export const changeTenantStatus = async (req, res) => {
 export const editTenant = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, phone, identity_card, birthday, gender, address } = req.body;
+    const { full_name, phone, identity_card, birthday, gender} = req.body;
 
     const tenant = await updateTenant(id, req.body);
 
@@ -196,7 +196,6 @@ export const getTenantDashboard = async (req, res) => {
           identity_card: tenantInfo.identity_card,
           birthday: tenantInfo.birthday,
           gender: tenantInfo.gender,
-          address: tenantInfo.address,
           created_at: tenantInfo.created_at,
         },
         dashboard: {
@@ -223,7 +222,7 @@ export const getTenantDashboard = async (req, res) => {
 export const updateTenantProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { full_name, phone, identity_card, birthday, gender, address } = req.body;
+    const { full_name, phone, identity_card, birthday, gender} = req.body;
 
     if (!full_name) {
       return res.status(400).json({
@@ -236,8 +235,8 @@ export const updateTenantProfile = async (req, res) => {
     
     try {
       await connection.query(
-        `UPDATE tenant SET full_name = ?, phone = ?, identity_card = ?, birthday = ?, gender = ?, address = ? WHERE user_id = ?`,
-        [full_name, phone || null, identity_card || null, birthday || null, gender || null, address || null, userId]
+        `UPDATE tenant SET full_name = ?, phone = ?, identity_card = ?, birthday = ?, gender = ? WHERE user_id = ?`,
+        [full_name, phone || null, identity_card || null, birthday || null, gender || null, userId]
       );
 
       return res.status(200).json({
@@ -250,7 +249,6 @@ export const updateTenantProfile = async (req, res) => {
           identity_card,
           birthday,
           gender,
-          address,
         },
       });
     } finally {

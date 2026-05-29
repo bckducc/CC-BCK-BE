@@ -6,9 +6,6 @@ import {
   deleteUtilityReading,
 } from '../services/utilityService.js';
 
-/**
- * Record or update utility reading
- */
 export const recordReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
@@ -56,9 +53,6 @@ export const recordReading = async (req, res) => {
   }
 };
 
-/**
- * Get utility reading for specific room/month/year
- */
 export const getReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
@@ -106,9 +100,6 @@ export const getReading = async (req, res) => {
   }
 };
 
-/**
- * Get all utility readings for a room
- */
 export const getRoomReadings = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
@@ -143,9 +134,6 @@ export const getRoomReadings = async (req, res) => {
   }
 };
 
-/**
- * Get all utility readings for landlord
- */
 export const listReadings = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
@@ -179,9 +167,6 @@ export const listReadings = async (req, res) => {
   }
 };
 
-/**
- * Delete utility reading
- */
 export const removeReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
