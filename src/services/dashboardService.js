@@ -24,7 +24,7 @@ export const getLandlordDashboard = async (landlordId) => {
 
     const [tenantsStats] = await connection.query(
       `SELECT COUNT(*) as total_tenants
-       FROM tenant t
+       FROM \`tenant\` t
        INNER JOIN users u ON t.user_id = u.id
        WHERE u.is_active = TRUE`
     );
@@ -65,7 +65,7 @@ export const getLandlordDashboard = async (landlordId) => {
        FROM invoices i
        INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON c.room_id = r.id
-       INNER JOIN tenant t ON c.tenant_id = t.id
+       INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
        WHERE r.landlord_id = ?
        ORDER BY i.created_at DESC
        LIMIT 5`,
@@ -102,7 +102,7 @@ export const getTenantDashboard = async (tenantUserId) => {
   
   try {
     const [tenantInfo] = await connection.query(
-      'SELECT * FROM tenant WHERE user_id = ?',
+      'SELECT * FROM \`tenant\` WHERE user_id = ?',
       [tenantUserId]
     );
 

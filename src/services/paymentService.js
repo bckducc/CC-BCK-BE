@@ -70,7 +70,7 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     throw new Error('Ngày thanh toán là bắt buộc');
   }
 
-  const validMethods = ['cash', 'bank_transfer'];
+  const validMethods = ['cash', 'bank_transfer', 'other'];
   if (payment_method && !validMethods.includes(payment_method)) {
     throw new Error('Phương thức thanh toán không hợp lệ');
   }

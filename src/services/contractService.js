@@ -31,7 +31,7 @@ export const createContract = async (contractData, landlordUserId) => {
 
     const [tenantCheck] = await connection.query(
       `SELECT t.*, u.is_active 
-       FROM tenant t 
+       FROM \`tenant\` t 
        INNER JOIN users u ON t.user_id = u.id 
        WHERE t.user_id = ?`,
       [tenant_id]
@@ -124,7 +124,7 @@ export const getContracts = async (filters, landlordUserId) => {
     let query = `
       SELECT c.*, t.full_name as tenant_name, t.phone as tenant_phone, r.room_number, r.floor
       FROM contracts c
-      INNER JOIN tenant t ON c.tenant_id = t.user_id
+      INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
       INNER JOIN rooms r ON c.room_id = r.id
       WHERE r.owner_id = ?
     `;
@@ -168,7 +168,7 @@ export const getContractById = async (contractId, landlordUserId) => {
       `SELECT c.*, t.full_name as tenant_name, t.phone as tenant_phone, t.identity_card,
               r.room_number, r.floor, r.area, r.price as room_price
        FROM contracts c
-       INNER JOIN tenant t ON c.tenant_id = t.user_id
+       INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
        INNER JOIN rooms r ON c.room_id = r.id
        WHERE c.id = ? AND r.owner_id = ?`,
       [contractId, landlordUserId]

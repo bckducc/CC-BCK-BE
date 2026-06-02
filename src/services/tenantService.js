@@ -65,7 +65,7 @@ export const getAllTenants = async (landlordId, filters = {}) => {
         t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active, u.created_at as user_created_at,
         CASE WHEN c.status = 'active' THEN TRUE ELSE FALSE END as has_active_contract
-      FROM tenant t
+      FROM \`tenant\` t
       INNER JOIN users u ON t.user_id = u.id
       LEFT JOIN contracts c ON c.tenant_id = t.user_id AND c.status = 'active'
       WHERE (u.id IN (SELECT user_id FROM landlord WHERE user_id = ?)
@@ -106,7 +106,7 @@ export const searchTenants = async (keyword, landlordId, filters = {}) => {
         t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active,
         CASE WHEN EXISTS (SELECT 1 FROM contracts c2 WHERE c2.tenant_id = t.user_id AND c2.status = "active") THEN TRUE ELSE FALSE END as has_active_contract
-      FROM tenant t
+      FROM \`tenant\` t
       INNER JOIN users u ON t.user_id = u.id
       WHERE (t.full_name LIKE ? OR t.phone LIKE ? OR t.identity_card LIKE ? OR u.username LIKE ?)
       AND (
@@ -145,9 +145,9 @@ export const getTenantById = async (tenantId) => {
       `SELECT 
         t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active
-      FROM tenant t
+      FROM \`tenant\` t
       INNER JOIN users u ON t.user_id = u.id
-      WHERE t.id = ?`,
+      WHERE t.user_id = ?`,
       [tenantId]
     );
 
@@ -166,7 +166,7 @@ export const toggleTenantStatus = async (tenantId) => {
   
   try {
     const [current] = await connection.query(
-      `SELECT u.is_active FROM tenant t INNER JOIN users u ON t.user_id = u.id WHERE t.id = ?`,
+      `SELECT u.is_active FROM \`tenant\` t INNER JOIN users u ON t.user_id = u.id WHERE t.user_id = ?`,
       [tenantId]
     );
 
@@ -177,7 +177,7 @@ export const toggleTenantStatus = async (tenantId) => {
     const newStatus = current[0].is_active ? 0 : 1;
     
     await connection.query(
-      'UPDATE users u INNER JOIN tenant t ON u.id = t.user_id SET u.is_active = ? WHERE t.id = ?',
+      'UPDATE users u INNER JOIN \`tenant\` t ON u.id = t.user_id SET u.is_active = ? WHERE t.user_id = ?',
       [newStatus, tenantId]
     );
 
@@ -188,13 +188,13 @@ export const toggleTenantStatus = async (tenantId) => {
 };
 
 export const updateTenant = async (tenantId, tenantData) => {
-  const { full_name, phone, identity_card, birthday, gender} = tenantData;
+  const { full_name, phone, identity_card, birthday, gender } = tenantData;
   
   const connection = await pool.getConnection();
   
   try {
     const [existing] = await connection.query(
-      'SELECT * FROM tenant WHERE id = ?',
+      'SELECT * FROM \`tenant\` WHERE user_id = ?',
       [tenantId]
     );
 
@@ -233,12 +233,12 @@ export const updateTenant = async (tenantId, tenantData) => {
     updateFields.push('updated_at = NOW()');
     updateValues.push(tenantId);
 
-    const query = `UPDATE tenant SET ${updateFields.join(', ')} WHERE id = ?`;
+    const query = `UPDATE \`tenant\` SET ${updateFields.join(', ')} WHERE user_id = ?`;
     
     await connection.query(query, updateValues);
 
     const [updated] = await connection.query(
-      'SELECT * FROM tenant WHERE id = ?',
+      'SELECT * FROM \`tenant\` WHERE user_id = ?',
       [tenantId]
     );
 
@@ -256,7 +256,7 @@ export const getTenantByUserId = async (userId) => {
       `SELECT 
         t.user_id, t.full_name, t.phone, t.identity_card, t.birthday, t.gender, t.created_at,
         u.username, u.is_active
-      FROM tenant t
+      FROM \`tenant\` t
       INNER JOIN users u ON t.user_id = u.id
       WHERE t.user_id = ?`,
       [userId]

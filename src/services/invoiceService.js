@@ -1,14 +1,114 @@
 import pool from '../config/database.js';
 import { createNotification } from './notificationService.js';
 
-export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
+const DEFAULT_VAT_PERCENT = 10;
+const VALID_STATUSES = ['pending', 'paid', 'overdue', 'cancelled'];
+const VALID_PAYMENT_METHODS = ['cash', 'bank_transfer', 'other'];
+
+const toNumber = (value, defaultValue = 0) => {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : defaultValue;
+};
+
+const requirePositiveInt = (value, fieldName) => {
+  const numberValue = Number(value);
+  if (!Number.isInteger(numberValue) || numberValue < 1) {
+    throw new Error(`${fieldName} khong hop le`);
+  }
+  return numberValue;
+};
+
+const normalizePaymentDate = (paymentDate) => {
+  if (!paymentDate) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  if (typeof paymentDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+    throw new Error('Ngay thanh toan phai co dinh dang YYYY-MM-DD');
+  }
+
+  const date = new Date(`${paymentDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== paymentDate) {
+    throw new Error('Ngay thanh toan khong hop le');
+  }
+
+  return paymentDate;
+};
+
+const buildDueDate = (month, year) => {
+  let dueMonth = month + 1;
+  let dueYear = year;
+
+  if (dueMonth > 12) {
+    dueMonth = 1;
+    dueYear += 1;
+  }
+
+  return `${dueYear}-${String(dueMonth).padStart(2, '0')}-05`;
+};
+
+const normalizeInvoice = (invoice) => {
+  if (!invoice) {
+    return invoice;
+  }
+
+  const subtotal = toNumber(invoice.subtotal_amount, (
+    toNumber(invoice.room_fee) +
+    toNumber(invoice.service_fee) +
+    toNumber(invoice.electric_fee) +
+    toNumber(invoice.water_fee) +
+    toNumber(invoice.other_fees)
+  ));
+
+  const vatAmount = toNumber(invoice.vat_amount);
+
+  return {
+    ...invoice,
+    subtotal_amount: subtotal,
+    vat_percent: toNumber(invoice.vat_percent, DEFAULT_VAT_PERCENT),
+    vat_amount: vatAmount,
+    discount: toNumber(invoice.discount),
+    total_amount: toNumber(invoice.total_amount, subtotal + vatAmount),
+    final_amount: toNumber(invoice.final_amount, subtotal + vatAmount - toNumber(invoice.discount)),
+  };
+};
+
+const getInvoiceDetailsById = async (connection, invoiceId) => {
+  const [rows] = await connection.query(
+    `SELECT i.*,
+            c.status as contract_status, c.start_date, c.end_date, c.monthly_rent,
+            r.room_number, r.floor, r.area,
+            t.full_name as tenant_name, t.phone as tenant_phone, t.identity_card,
+            l.full_name as landlord_name, l.phone as landlord_phone,
+            l.bank_name, l.bank_account_number, l.bank_account_name
+     FROM invoices i
+     INNER JOIN contracts c ON i.contract_id = c.id
+     INNER JOIN rooms r ON i.room_id = r.id
+     INNER JOIN tenant t ON i.tenant_id = t.user_id
+     INNER JOIN landlord l ON r.owner_id = l.user_id
+     WHERE i.id = ?`,
+    [invoiceId]
+  );
+
+  return normalizeInvoice(rows[0]);
+};
+
+export const generateMonthlyInvoices = async (landlordUserId, month, year, options = {}) => {
+  const normalizedMonth = requirePositiveInt(month, 'Thang');
+  const normalizedYear = requirePositiveInt(year, 'Nam');
+  const vatPercent = toNumber(options.vat_percent, DEFAULT_VAT_PERCENT);
   const connection = await pool.getConnection();
-  
+
+  if (normalizedMonth > 12) {
+    throw new Error('Thang phai tu 1 den 12');
+  }
+
   try {
     await connection.beginTransaction();
 
     const [contracts] = await connection.query(
-      `SELECT c.*, r.room_number, r.area, r.price as room_price, r.owner_id, c.tenant_id
+      `SELECT c.id, c.room_id, c.tenant_id, c.monthly_rent,
+              r.room_number, r.owner_id
        FROM contracts c
        INNER JOIN rooms r ON c.room_id = r.id
        WHERE r.owner_id = ? AND c.status = 'active'`,
@@ -16,111 +116,122 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
     );
 
     if (contracts.length === 0) {
-      await connection.rollback();
-      throw new Error('Không có hợp đồng đang hoạt động');
+      throw new Error('Khong co hop dong dang hoat dong');
     }
 
-    const generatedInvoices = [];
+    const created = [];
+    const skipped = [];
+    const warnings = [];
 
     for (const contract of contracts) {
       const [existingInvoice] = await connection.query(
         'SELECT id FROM invoices WHERE contract_id = ? AND month = ? AND year = ? FOR UPDATE',
-        [contract.id, month, year]
+        [contract.id, normalizedMonth, normalizedYear]
       );
 
       if (existingInvoice.length > 0) {
+        skipped.push({
+          contract_id: contract.id,
+          room_id: contract.room_id,
+          room_number: contract.room_number,
+          reason: 'invoice_exists',
+        });
         continue;
       }
 
-      const [utilityReading] = await connection.query(
+      const [utilityRows] = await connection.query(
         'SELECT * FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-        [contract.room_id, month, year]
+        [contract.room_id, normalizedMonth, normalizedYear]
       );
 
-      let electric_fee = 0;
-      let water_fee = 0;
+      let electricFee = 0;
+      let waterFee = 0;
 
-      if (utilityReading.length > 0) {
-        const util = utilityReading[0];
-        const electric_consumption = util.electric_new - util.electric_old;
-        const water_consumption = util.water_new - util.water_old;
-        electric_fee = electric_consumption * util.electric_price;
-        water_fee = water_consumption * util.water_price;
+      if (utilityRows.length > 0) {
+        const utility = utilityRows[0];
+        electricFee = Math.max(0, utility.electric_new - utility.electric_old) * toNumber(utility.electric_price);
+        waterFee = Math.max(0, utility.water_new - utility.water_old) * toNumber(utility.water_price);
+      } else {
+        warnings.push({
+          contract_id: contract.id,
+          room_id: contract.room_id,
+          room_number: contract.room_number,
+          message: 'Chua nhap chi so dien nuoc, hoa don duoc tao voi tien dien nuoc bang 0',
+        });
       }
 
       const [roomServices] = await connection.query(
-        `SELECT rs.quantity, s.service_name, s.price, s.unit, s.is_optional
+        `SELECT rs.quantity, s.price
          FROM room_services rs
          INNER JOIN services s ON rs.service_id = s.id
          WHERE rs.room_id = ?`,
         [contract.room_id]
       );
 
-      const service_fee = roomServices.reduce((sum, rs) => {
-        return sum + (parseFloat(rs.price) * rs.quantity);
+      const serviceFee = roomServices.reduce((sum, service) => {
+        return sum + toNumber(service.price) * toNumber(service.quantity, 1);
       }, 0);
 
-      const room_fee = parseFloat(contract.monthly_rent);
-      const other_fees = 0; 
-      const discount = 0; 
-      const total_amount = room_fee + service_fee + electric_fee + water_fee + other_fees;
-      const final_amount = total_amount - discount;
-
-      let dueMonth = month + 1;
-      let dueYear = year;
-      if (dueMonth > 12) {
-        dueMonth = 1;
-        dueYear = year + 1;
-      }
-      const dueDate = `${dueYear}-${String(dueMonth).padStart(2, '0')}-05`;
+      const roomFee = toNumber(contract.monthly_rent);
+      const otherFees = toNumber(options.other_fees);
+      const discount = toNumber(options.discount);
+      const subtotalAmount = roomFee + serviceFee + electricFee + waterFee + otherFees;
+      const vatAmount = Math.round((subtotalAmount * vatPercent / 100) * 100) / 100;
+      const totalAmount = subtotalAmount + vatAmount;
+      const finalAmount = Math.max(0, totalAmount - discount);
+      const dueDate = options.due_date || buildDueDate(normalizedMonth, normalizedYear);
 
       const [invoiceResult] = await connection.query(
         `INSERT INTO invoices (
-          room_id, tenant_id, contract_id, month, year, 
+          room_id, tenant_id, contract_id, month, year,
           room_fee, service_fee, electric_fee, water_fee, other_fees,
-          total_amount, discount, final_amount, due_date, status, created_at, updated_at
-        ) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+          subtotal_amount, vat_percent, vat_amount, discount,
+          total_amount, final_amount, due_date, status, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
         [
           contract.room_id,
           contract.tenant_id,
           contract.id,
-          month,
-          year,
-          room_fee,
-          service_fee,
-          electric_fee,
-          water_fee,
-          other_fees,
-          total_amount,
+          normalizedMonth,
+          normalizedYear,
+          roomFee,
+          serviceFee,
+          electricFee,
+          waterFee,
+          otherFees,
+          subtotalAmount,
+          vatPercent,
+          vatAmount,
           discount,
-          final_amount,
-          dueDate
+          totalAmount,
+          finalAmount,
+          dueDate,
         ]
       );
 
-      const invoiceId = invoiceResult.insertId;
-
-      generatedInvoices.push({
-        id: invoiceId,
-        contract_id: contract.id,
-        room_number: contract.room_number,
-        tenant_id: contract.tenant_id,
-        total_amount,
-        final_amount,
-      });
+      const invoice = await getInvoiceDetailsById(connection, invoiceResult.insertId);
+      created.push(invoice);
 
       await createNotification(contract.tenant_id, {
-        title: `Hóa đơn mới - Tháng ${month}/${year}`,
-        content: `Hóa đơn phòng ${contract.room_number} tháng ${month}/${year} đã được tạo với tổng tiền ${final_amount.toLocaleString()} VNĐ. Hạn thanh toán: ${dueDate}.`,
+        title: `Hoa don moi - Thang ${normalizedMonth}/${normalizedYear}`,
+        content: `Hoa don phong ${contract.room_number} thang ${normalizedMonth}/${normalizedYear} da duoc tao voi tong tien ${finalAmount.toLocaleString('vi-VN')} VND. Han thanh toan: ${dueDate}.`,
         type: 'invoice',
-        reference_id: invoiceId,
-        reference_type: 'invoice'
+        reference_id: invoiceResult.insertId,
+        reference_type: 'invoice',
       });
     }
 
     await connection.commit();
-    return generatedInvoices;
+
+    return {
+      created,
+      skipped,
+      warnings,
+      created_count: created.length,
+      skipped_count: skipped.length,
+      warning_count: warnings.length,
+    };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -132,12 +243,11 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year) => {
 export const getInvoices = async (filters, landlordUserId) => {
   const { status, month, year, room_id } = filters;
   const connection = await pool.getConnection();
-  
+
   try {
     let query = `
-      SELECT i.*, c.status as contract_status, r.room_number, t.full_name as tenant_name, t.phone as tenant_phone
+      SELECT i.*, r.room_number, t.full_name as tenant_name, t.phone as tenant_phone
       FROM invoices i
-      INNER JOIN contracts c ON i.contract_id = c.id
       INNER JOIN rooms r ON i.room_id = r.id
       INNER JOIN tenant t ON i.tenant_id = t.user_id
       WHERE r.owner_id = ?
@@ -149,20 +259,25 @@ export const getInvoices = async (filters, landlordUserId) => {
       params.push(status);
     }
 
-    if (month && year) {
-      query += ' AND i.month = ? AND i.year = ?';
-      params.push(parseInt(month), parseInt(year));
+    if (month) {
+      query += ' AND i.month = ?';
+      params.push(requirePositiveInt(month, 'Thang'));
+    }
+
+    if (year) {
+      query += ' AND i.year = ?';
+      params.push(requirePositiveInt(year, 'Nam'));
     }
 
     if (room_id) {
       query += ' AND i.room_id = ?';
-      params.push(room_id);
+      params.push(requirePositiveInt(room_id, 'Phong'));
     }
 
-    query += ' ORDER BY i.year DESC, i.month DESC';
+    query += ' ORDER BY i.year DESC, i.month DESC, i.id DESC';
 
     const [rows] = await connection.query(query, params);
-    return rows;
+    return rows.map(normalizeInvoice);
   } finally {
     connection.release();
   }
@@ -170,56 +285,103 @@ export const getInvoices = async (filters, landlordUserId) => {
 
 export const getInvoiceById = async (invoiceId, landlordUserId) => {
   const connection = await pool.getConnection();
-  
+
   try {
     const [rows] = await connection.query(
-      `SELECT i.*, c.status as contract_status, c.start_date, c.end_date, c.monthly_rent,
-              r.room_number, r.floor, r.area,
-              t.full_name as tenant_name, t.phone as tenant_phone, t.identity_card
+      `SELECT i.id
        FROM invoices i
-       INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON i.room_id = r.id
-       INNER JOIN tenant t ON i.tenant_id = t.user_id
        WHERE i.id = ? AND r.owner_id = ?`,
       [invoiceId, landlordUserId]
     );
 
     if (rows.length === 0) {
-      throw new Error('Không tìm thấy hóa đơn');
+      throw new Error('Khong tim thay hoa don');
     }
 
-    return rows[0];
+    return await getInvoiceDetailsById(connection, invoiceId);
   } finally {
     connection.release();
   }
 };
 
-export const getTenantInvoices = async (tenantUserId) => {
+export const getTenantInvoices = async (tenantUserId, filters = {}) => {
+  const { status, month, year, room_id } = filters;
   const connection = await pool.getConnection();
-  
+
+  try {
+    let query = `
+      SELECT i.*, r.room_number, l.full_name as landlord_name
+      FROM invoices i
+      INNER JOIN rooms r ON i.room_id = r.id
+      INNER JOIN landlord l ON r.owner_id = l.user_id
+      WHERE i.tenant_id = ?
+    `;
+    const params = [tenantUserId];
+
+    if (status) {
+      query += ' AND i.status = ?';
+      params.push(status);
+    }
+
+    if (month) {
+      query += ' AND i.month = ?';
+      params.push(requirePositiveInt(month, 'Thang'));
+    }
+
+    if (year) {
+      query += ' AND i.year = ?';
+      params.push(requirePositiveInt(year, 'Nam'));
+    }
+
+    if (room_id) {
+      query += ' AND i.room_id = ?';
+      params.push(requirePositiveInt(room_id, 'Phong'));
+    }
+
+    query += ' ORDER BY i.year DESC, i.month DESC, i.id DESC';
+
+    const [rows] = await connection.query(query, params);
+    return rows.map(normalizeInvoice);
+  } finally {
+    connection.release();
+  }
+};
+
+export const getTenantInvoiceById = async (invoiceId, tenantUserId) => {
+  const connection = await pool.getConnection();
+
   try {
     const [rows] = await connection.query(
-      `SELECT i.*, r.room_number
-       FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
-       WHERE i.tenant_id = ?
-       ORDER BY i.year DESC, i.month DESC`,
-      [tenantUserId]
+      'SELECT id FROM invoices WHERE id = ? AND tenant_id = ?',
+      [invoiceId, tenantUserId]
     );
 
-    return rows;
+    if (rows.length === 0) {
+      throw new Error('Ban khong co quyen xem hoa don nay');
+    }
+
+    return await getInvoiceDetailsById(connection, invoiceId);
   } finally {
     connection.release();
   }
 };
 
-export const confirmPayment = async (invoiceId, landlordUserId) => {
+export const confirmPayment = async (invoiceId, landlordUserId, paymentData = {}) => {
+  const amount = paymentData.amount === undefined ? null : toNumber(paymentData.amount);
+  const paymentDate = normalizePaymentDate(paymentData.payment_date);
+  const paymentMethod = paymentData.payment_method || 'cash';
+
+  if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
+    throw new Error('Phuong thuc thanh toan khong hop le');
+  }
+
   const connection = await pool.getConnection();
-  
+
   try {
     await connection.beginTransaction();
 
-    const [invoiceCheck] = await connection.query(
+    const [invoiceRows] = await connection.query(
       `SELECT i.*, r.owner_id
        FROM invoices i
        INNER JOIN rooms r ON i.room_id = r.id
@@ -228,39 +390,81 @@ export const confirmPayment = async (invoiceId, landlordUserId) => {
       [invoiceId]
     );
 
-    if (invoiceCheck.length === 0) {
-      await connection.rollback();
-      throw new Error('Không tìm thấy hóa đơn');
+    if (invoiceRows.length === 0) {
+      throw new Error('Khong tim thay hoa don');
     }
 
-    if (invoiceCheck[0].owner_id !== landlordUserId) {
-      await connection.rollback();
-      throw new Error('Bạn không có quyền xác nhận hóa đơn này');
+    const invoice = normalizeInvoice(invoiceRows[0]);
+
+    if (invoice.owner_id !== landlordUserId) {
+      throw new Error('Ban khong co quyen xac nhan hoa don nay');
     }
 
-    if (invoiceCheck[0].status === 'paid') {
-      await connection.rollback();
-      throw new Error('Hóa đơn này đã được thanh toán');
+    if (invoice.status === 'paid') {
+      throw new Error('Hoa don nay da duoc thanh toan');
     }
 
-    await connection.query(
-      `UPDATE invoices SET status = 'paid', updated_at = NOW() WHERE id = ?`,
+    const [paidRows] = await connection.query(
+      'SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payments WHERE invoice_id = ?',
       [invoiceId]
     );
 
-    await createNotification(invoiceCheck[0].tenant_id, {
-      title: 'Thanh toán thành công',
-      content: `Hóa đơn tháng ${invoiceCheck[0].month}/${invoiceCheck[0].year} của bạn đã được xác nhận thanh toán thành công.`,
+    const totalPaid = toNumber(paidRows[0].total_paid);
+    const remaining = Math.max(0, invoice.final_amount - totalPaid);
+    const paymentAmount = amount === null ? remaining : amount;
+
+    if (paymentAmount <= 0) {
+      throw new Error('So tien thanh toan phai lon hon 0');
+    }
+
+    if (paymentAmount > remaining) {
+      throw new Error('So tien thanh toan vuot qua so tien con lai');
+    }
+
+    if (paymentAmount < remaining) {
+      throw new Error('Xac nhan thanh toan can thanh toan du so tien con lai');
+    }
+
+    const [paymentResult] = await connection.query(
+      `INSERT INTO payments (
+        invoice_id, amount, payment_date, payment_method,
+        transaction_code, note, received_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        invoiceId,
+        paymentAmount,
+        paymentDate,
+        paymentMethod,
+        paymentData.transaction_code || null,
+        paymentData.note || null,
+        landlordUserId,
+      ]
+    );
+
+    const newTotalPaid = totalPaid + paymentAmount;
+    const newStatus = 'paid';
+
+    await connection.query(
+      'UPDATE invoices SET status = ?, updated_at = NOW() WHERE id = ?',
+      [newStatus, invoiceId]
+    );
+
+    await createNotification(invoice.tenant_id, {
+      title: 'Thanh toan hoa don',
+      content: `Hoa don thang ${invoice.month}/${invoice.year} da duoc ghi nhan thanh toan ${paymentAmount.toLocaleString('vi-VN')} VND.`,
       type: 'invoice',
       reference_id: invoiceId,
-      reference_type: 'invoice'
+      reference_type: 'invoice',
     });
 
     await connection.commit();
 
     return {
-      id: invoiceId,
-      status: 'paid',
+      id: Number(invoiceId),
+      status: newStatus,
+      payment_id: paymentResult.insertId,
+      total_paid: newTotalPaid,
+      remaining_balance: Math.max(0, invoice.final_amount - newTotalPaid),
     };
   } catch (error) {
     await connection.rollback();
@@ -271,40 +475,31 @@ export const confirmPayment = async (invoiceId, landlordUserId) => {
 };
 
 export const updateInvoiceStatus = async (invoiceId, status, landlordUserId) => {
-  const validStatuses = ['pending', 'paid', 'overdue', 'cancelled'];
-  
-  if (!validStatuses.includes(status)) {
-    throw new Error('Trạng thái không hợp lệ');
+  if (!VALID_STATUSES.includes(status)) {
+    throw new Error('Trang thai khong hop le');
   }
 
   const connection = await pool.getConnection();
-  
+
   try {
-    const [invoiceCheck] = await connection.query(
-      `SELECT i.*, r.owner_id
+    const [invoiceRows] = await connection.query(
+      `SELECT i.id
        FROM invoices i
        INNER JOIN rooms r ON i.room_id = r.id
-       WHERE i.id = ?`,
-      [invoiceId]
+       WHERE i.id = ? AND r.owner_id = ?`,
+      [invoiceId, landlordUserId]
     );
 
-    if (invoiceCheck.length === 0) {
-      throw new Error('Không tìm thấy hóa đơn');
-    }
-
-    if (invoiceCheck[0].owner_id !== landlordUserId) {
-      throw new Error('Bạn không có quyền cập nhật hóa đơn này');
+    if (invoiceRows.length === 0) {
+      throw new Error('Khong tim thay hoa don');
     }
 
     await connection.query(
-      `UPDATE invoices SET status = ?, updated_at = NOW() WHERE id = ?`,
+      'UPDATE invoices SET status = ?, updated_at = NOW() WHERE id = ?',
       [status, invoiceId]
     );
 
-    return {
-      id: invoiceId,
-      status,
-    };
+    return { id: Number(invoiceId), status };
   } finally {
     connection.release();
   }
@@ -312,10 +507,10 @@ export const updateInvoiceStatus = async (invoiceId, status, landlordUserId) => 
 
 export const getUnpaidCount = async (landlordUserId) => {
   const connection = await pool.getConnection();
-  
+
   try {
     const [rows] = await connection.query(
-      `SELECT COUNT(*) as count 
+      `SELECT COUNT(*) as count
        FROM invoices i
        INNER JOIN rooms r ON i.room_id = r.id
        WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')`,
@@ -330,7 +525,7 @@ export const getUnpaidCount = async (landlordUserId) => {
 
 export const getRevenueByMonth = async (landlordUserId, year) => {
   const connection = await pool.getConnection();
-  
+
   try {
     const [rows] = await connection.query(
       `SELECT i.year, i.month, SUM(i.final_amount) as revenue, COUNT(*) as invoice_count
@@ -339,7 +534,7 @@ export const getRevenueByMonth = async (landlordUserId, year) => {
        WHERE r.owner_id = ? AND i.year = ? AND i.status = 'paid'
        GROUP BY i.year, i.month
        ORDER BY i.month`,
-      [landlordUserId, year]
+      [landlordUserId, requirePositiveInt(year, 'Nam')]
     );
 
     return rows;
