@@ -10,7 +10,7 @@ export const getLandlordDashboard = async (landlordId) => {
         SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
         SUM(CASE WHEN status = 'rented' THEN 1 ELSE 0 END) as rented,
         SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance
-       FROM rooms WHERE landlord_id = ?`,
+       FROM rooms WHERE owner_id = ?`,
       [landlordId]
     );
 
@@ -18,7 +18,7 @@ export const getLandlordDashboard = async (landlordId) => {
       `SELECT COUNT(*) as active_contracts
        FROM contracts c
        INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.landlord_id = ? AND c.status = 'active'`,
+       WHERE r.owner_id = ? AND c.status = 'active'`,
       [landlordId]
     );
 
@@ -34,7 +34,7 @@ export const getLandlordDashboard = async (landlordId) => {
        FROM invoices i
        INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.landlord_id = ? AND i.status = 'unpaid'`,
+       WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')`,
       [landlordId]
     );
 
@@ -43,20 +43,20 @@ export const getLandlordDashboard = async (landlordId) => {
     const currentYear = now.getFullYear();
 
     const [revenueStats] = await connection.query(
-      `SELECT COALESCE(SUM(i.total), 0) as monthly_revenue
+      `SELECT COALESCE(SUM(i.final_amount), 0) as monthly_revenue
        FROM invoices i
        INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.landlord_id = ? AND i.month = ? AND i.year = ? AND i.status = 'paid'`,
+       WHERE r.owner_id = ? AND i.month = ? AND i.year = ? AND i.status = 'paid'`,
       [landlordId, currentMonth, currentYear]
     );
 
     const [unpaidAmountStats] = await connection.query(
-      `SELECT COALESCE(SUM(i.total), 0) as unpaid_amount
+      `SELECT COALESCE(SUM(i.final_amount), 0) as unpaid_amount
        FROM invoices i
        INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.landlord_id = ? AND i.status = 'unpaid'`,
+       WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')`,
       [landlordId]
     );
 
@@ -66,7 +66,7 @@ export const getLandlordDashboard = async (landlordId) => {
        INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON c.room_id = r.id
        INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
-       WHERE r.landlord_id = ?
+       WHERE r.owner_id = ?
        ORDER BY i.created_at DESC
        LIMIT 5`,
       [landlordId]
@@ -117,7 +117,7 @@ export const getTenantDashboard = async (tenantUserId) => {
        FROM contracts c
        INNER JOIN rooms r ON c.room_id = r.id
        WHERE c.tenant_id = ? AND c.status = 'active'`,
-      [tenant.id]
+      [tenant.user_id]
     );
 
     const activeContract = contractInfo.length > 0 ? contractInfo[0] : null;
@@ -143,7 +143,7 @@ export const getTenantDashboard = async (tenantUserId) => {
 
     return {
       profile: {
-        id: tenant.id,
+        id: tenant.user_id,
         full_name: tenant.full_name,
         phone: tenant.phone,
         address: tenant.address,
@@ -161,7 +161,7 @@ export const getTenantDashboard = async (tenantUserId) => {
         id: currentInvoice.id,
         month: currentInvoice.month,
         year: currentInvoice.year,
-        total: currentInvoice.total,
+        total: currentInvoice.final_amount,
         status: currentInvoice.status,
         due_date: currentInvoice.due_date,
       } : null,

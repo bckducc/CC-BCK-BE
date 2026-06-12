@@ -1,6 +1,7 @@
 import {
   recordUtilityReading,
   getUtilityReading,
+  getUtilityReadingsByContract,
   getUtilityReadingsByRoom,
   getAllUtilityReadings,
   deleteUtilityReading,
@@ -9,24 +10,12 @@ import {
 export const recordReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
-    const {
-      room_id,
-      month,
-      year,
-      electric_old,
-      electric_new,
-      electric_price,
-      water_old,
-      water_new,
-      water_price,
-      recorded_date,
-      note
-    } = req.body;
+    const { contract_id, month, year, electric_price, water_price } = req.body;
 
-    if (!room_id || !month || !year || electric_price === undefined || water_price === undefined) {
+    if (!contract_id || !month || !year || electric_price === undefined || water_price === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Phòng, tháng, năm, giá điện và giá nước là bắt buộc',
+        message: 'Hop dong, thang, nam, gia dien va gia nuoc la bat buoc',
       });
     }
 
@@ -34,7 +23,7 @@ export const recordReading = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Ghi nhận chỉ số điện nước thành công',
+      message: 'Ghi nhan chi so dien nuoc thanh cong',
       data: utility,
     });
   } catch (error) {
@@ -44,11 +33,11 @@ export const recordReading = async (req, res) => {
       value: req.body,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Ghi nhận chỉ số điện nước thất bại',
+      message: error.message || 'Ghi nhan chi so dien nuoc that bai',
     });
   }
 };
@@ -56,17 +45,17 @@ export const recordReading = async (req, res) => {
 export const getReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
-    const { room_id, month, year } = req.query;
+    const { contract_id, month, year } = req.query;
 
-    if (!room_id || !month || !year) {
+    if (!contract_id || !month || !year) {
       return res.status(400).json({
         success: false,
-        message: 'Phòng, tháng và năm là bắt buộc',
+        message: 'Hop dong, thang va nam la bat buoc',
       });
     }
 
     const utility = await getUtilityReading(
-      parseInt(room_id),
+      parseInt(contract_id),
       parseInt(month),
       parseInt(year),
       landlordUserId
@@ -75,7 +64,7 @@ export const getReading = async (req, res) => {
     if (!utility) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy chỉ số điện nước',
+        message: 'Khong tim thay chi so dien nuoc',
       });
     }
 
@@ -86,16 +75,50 @@ export const getReading = async (req, res) => {
   } catch (error) {
     console.error('Get utility reading error:', {
       type: 'GET_UTILITY_READING_ERROR',
-      roomId: req.query.room_id,
+      contractId: req.query.contract_id,
       month: req.query.month,
       year: req.query.year,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Không tải được chỉ số điện nước',
+      message: error.message || 'Khong tai duoc chi so dien nuoc',
+    });
+  }
+};
+
+export const getContractReadings = async (req, res) => {
+  try {
+    const landlordUserId = req.user.id;
+    const { contract_id } = req.params;
+
+    if (!contract_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Hop dong la bat buoc',
+      });
+    }
+
+    const utilities = await getUtilityReadingsByContract(parseInt(contract_id), landlordUserId);
+
+    return res.status(200).json({
+      success: true,
+      data: utilities,
+      total: utilities.length,
+    });
+  } catch (error) {
+    console.error('Get contract utility readings error:', {
+      type: 'GET_CONTRACT_UTILITY_READINGS_ERROR',
+      contractId: req.params.contract_id,
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Khong tai duoc danh sach chi so dien nuoc',
     });
   }
 };
@@ -108,7 +131,7 @@ export const getRoomReadings = async (req, res) => {
     if (!room_id) {
       return res.status(400).json({
         success: false,
-        message: 'Phòng là bắt buộc',
+        message: 'Phong la bat buoc',
       });
     }
 
@@ -125,11 +148,11 @@ export const getRoomReadings = async (req, res) => {
       roomId: req.params.room_id,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Không tải được danh sách chỉ số điện nước',
+      message: error.message || 'Khong tai duoc danh sach chi so dien nuoc',
     });
   }
 };
@@ -137,9 +160,9 @@ export const getRoomReadings = async (req, res) => {
 export const listReadings = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
-    const { month, year, room_id, page = 1, limit = 20 } = req.query;
+    const { month, year, room_id, contract_id, page = 1, limit = 20 } = req.query;
 
-    const filters = { month, year, room_id };
+    const filters = { month, year, room_id, contract_id };
     const utilities = await getAllUtilityReadings(landlordUserId, filters);
 
     const start = (page - 1) * limit;
@@ -158,11 +181,11 @@ export const listReadings = async (req, res) => {
       userId: req.user?.id,
       filters: req.query,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(500).json({
       success: false,
-      message: 'Không tải được danh sách chỉ số điện nước',
+      message: 'Khong tai duoc danh sach chi so dien nuoc',
     });
   }
 };
@@ -170,17 +193,17 @@ export const listReadings = async (req, res) => {
 export const removeReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
-    const { room_id, month, year } = req.query;
+    const { contract_id, month, year } = req.query;
 
-    if (!room_id || !month || !year) {
+    if (!contract_id || !month || !year) {
       return res.status(400).json({
         success: false,
-        message: 'Phòng, tháng và năm là bắt buộc',
+        message: 'Hop dong, thang va nam la bat buoc',
       });
     }
 
     await deleteUtilityReading(
-      parseInt(room_id),
+      parseInt(contract_id),
       parseInt(month),
       parseInt(year),
       landlordUserId
@@ -188,21 +211,21 @@ export const removeReading = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Xóa chỉ số điện nước thành công',
+      message: 'Xoa chi so dien nuoc thanh cong',
     });
   } catch (error) {
     console.error('Delete utility reading error:', {
       type: 'DELETE_UTILITY_READING_ERROR',
-      roomId: req.query.room_id,
+      contractId: req.query.contract_id,
       month: req.query.month,
       year: req.query.year,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Xóa chỉ số điện nước thất bại',
+      message: error.message || 'Xoa chi so dien nuoc that bai',
     });
   }
 };

@@ -3,7 +3,7 @@ import { validateUtilityReading, validateNotFutureDate, validatePrice } from '..
 
 
 const UTILITY_COLUMNS = `
-  id, room_id, month, year,
+  id, contract_id, month, year,
   electric_old, electric_new, electric_price,
   water_old, water_new, water_price,
   recorded_date, note
@@ -75,7 +75,7 @@ const normalizeNote = (value) => {
 };
 
 const buildUtilityPayload = async (utilityData, landlordUserId) => {
-  const roomId = normalizePositiveInt(utilityData.room_id, 'Phong');
+  const contractId = normalizePositiveInt(utilityData.contract_id, 'Hop dong');
   const month = normalizePositiveInt(utilityData.month, 'Thang');
   const year = normalizePositiveInt(utilityData.year, 'Nam');
 
@@ -96,7 +96,7 @@ const buildUtilityPayload = async (utilityData, landlordUserId) => {
   const electricPrice = normalizePrice(utilityData.electric_price, 'Gia dien');
   const waterPrice = normalizePrice(utilityData.water_price, 'Gia nuoc');
   return {
-    room_id: roomId,
+    contract_id: contractId,
     month,
     year,
     electric_old: electricOld,
@@ -117,18 +117,22 @@ export const recordUtilityReading = async (utilityData, landlordUserId) => {
   try {
     await connection.beginTransaction();
 
-    const [roomCheck] = await connection.query(
-      'SELECT id FROM rooms WHERE id = ? AND owner_id = ? FOR UPDATE',
-      [utility.room_id, landlordUserId]
+    const [contractCheck] = await connection.query(
+      `SELECT c.id
+       FROM contracts c
+       INNER JOIN rooms r ON c.room_id = r.id
+       WHERE c.id = ? AND r.owner_id = ?
+       FOR UPDATE`,
+      [utility.contract_id, landlordUserId]
     );
 
-    if (roomCheck.length === 0) {
-      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
+    if (contractCheck.length === 0) {
+      throw new Error('Hop dong khong ton tai hoac khong thuoc ve ban');
     }
 
     const [existing] = await connection.query(
-      'SELECT id FROM utilities WHERE room_id = ? AND month = ? AND year = ? FOR UPDATE',
-      [utility.room_id, utility.month, utility.year]
+      'SELECT id FROM utilities WHERE contract_id = ? AND month = ? AND year = ? FOR UPDATE',
+      [utility.contract_id, utility.month, utility.year]
     );
 
     let result;
@@ -139,7 +143,7 @@ export const recordUtilityReading = async (utilityData, landlordUserId) => {
          SET electric_old = ?, electric_new = ?, electric_price = ?,
              water_old = ?, water_new = ?, water_price = ?,
              recorded_date = ?, note = ?
-         WHERE room_id = ? AND month = ? AND year = ?`,
+         WHERE contract_id = ? AND month = ? AND year = ?`,
         [
           utility.electric_old,
           utility.electric_new,
@@ -149,27 +153,27 @@ export const recordUtilityReading = async (utilityData, landlordUserId) => {
           utility.water_price,
           utility.recorded_date,
           utility.note,
-          utility.room_id,
+          utility.contract_id,
           utility.month,
           utility.year,
         ]
       );
 
       const [updated] = await connection.query(
-        `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE room_id = ? AND month = ? AND year = ?`,
-        [utility.room_id, utility.month, utility.year]
+        `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE contract_id = ? AND month = ? AND year = ?`,
+        [utility.contract_id, utility.month, utility.year]
       );
       result = updated[0];
     } else {
       const [insertResult] = await connection.query(
         `INSERT INTO utilities (
-          room_id, month, year,
+          contract_id, month, year,
           electric_old, electric_new, electric_price,
           water_old, water_new, water_price,
           recorded_date, note
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          utility.room_id,
+          utility.contract_id,
           utility.month,
           utility.year,
           utility.electric_old,
@@ -200,28 +204,59 @@ export const recordUtilityReading = async (utilityData, landlordUserId) => {
   }
 };
 
-export const getUtilityReading = async (roomId, month, year, landlordUserId) => {
-  const normalizedRoomId = normalizePositiveInt(roomId, 'Phong');
+export const getUtilityReading = async (contractId, month, year, landlordUserId) => {
+  const normalizedContractId = normalizePositiveInt(contractId, 'Hop dong');
   const normalizedMonth = normalizePositiveInt(month, 'Thang');
   const normalizedYear = normalizePositiveInt(year, 'Nam');
   const connection = await pool.getConnection();
 
   try {
-    const [roomCheck] = await connection.query(
-      'SELECT id FROM rooms WHERE id = ? AND owner_id = ?',
-      [normalizedRoomId, landlordUserId]
+    const [contractCheck] = await connection.query(
+      `SELECT c.id
+       FROM contracts c
+       INNER JOIN rooms r ON c.room_id = r.id
+       WHERE c.id = ? AND r.owner_id = ?`,
+      [normalizedContractId, landlordUserId]
     );
 
-    if (roomCheck.length === 0) {
-      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
+    if (contractCheck.length === 0) {
+      throw new Error('Hop dong khong ton tai hoac khong thuoc ve ban');
     }
 
     const [rows] = await connection.query(
-      `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE room_id = ? AND month = ? AND year = ?`,
-      [normalizedRoomId, normalizedMonth, normalizedYear]
+      `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE contract_id = ? AND month = ? AND year = ?`,
+      [normalizedContractId, normalizedMonth, normalizedYear]
     );
 
     return rows[0] || null;
+  } finally {
+    connection.release();
+  }
+};
+
+export const getUtilityReadingsByContract = async (contractId, landlordUserId) => {
+  const normalizedContractId = normalizePositiveInt(contractId, 'Hop dong');
+  const connection = await pool.getConnection();
+
+  try {
+    const [contractCheck] = await connection.query(
+      `SELECT c.id
+       FROM contracts c
+       INNER JOIN rooms r ON c.room_id = r.id
+       WHERE c.id = ? AND r.owner_id = ?`,
+      [normalizedContractId, landlordUserId]
+    );
+
+    if (contractCheck.length === 0) {
+      throw new Error('Hop dong khong ton tai hoac khong thuoc ve ban');
+    }
+
+    const [rows] = await connection.query(
+      `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE contract_id = ? ORDER BY year DESC, month DESC`,
+      [normalizedContractId]
+    );
+
+    return rows;
   } finally {
     connection.release();
   }
@@ -242,7 +277,14 @@ export const getUtilityReadingsByRoom = async (roomId, landlordUserId) => {
     }
 
     const [rows] = await connection.query(
-      `SELECT ${UTILITY_COLUMNS} FROM utilities WHERE room_id = ? ORDER BY year DESC, month DESC`,
+      `SELECT u.id, u.contract_id, u.month, u.year,
+              u.electric_old, u.electric_new, u.electric_price,
+              u.water_old, u.water_new, u.water_price,
+              u.recorded_date, u.note
+       FROM utilities u
+       INNER JOIN contracts c ON u.contract_id = c.id
+       WHERE c.room_id = ?
+       ORDER BY u.year DESC, u.month DESC`,
       [normalizedRoomId]
     );
 
@@ -253,18 +295,20 @@ export const getUtilityReadingsByRoom = async (roomId, landlordUserId) => {
 };
 
 export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
-  const { month, year, room_id } = filters;
+  const { month, year, room_id, contract_id } = filters;
   const connection = await pool.getConnection();
 
   try {
     let query = `
-      SELECT u.id, u.room_id, u.month, u.year,
+      SELECT u.id, u.contract_id, c.room_id, u.month, u.year,
              u.electric_old, u.electric_new, u.electric_price,
              u.water_old, u.water_new, u.water_price,
              u.recorded_date, u.note,
+             c.contract_code, c.tenant_id,
              r.room_number, r.floor
       FROM utilities u
-      INNER JOIN rooms r ON u.room_id = r.id
+      INNER JOIN contracts c ON u.contract_id = c.id
+      INNER JOIN rooms r ON c.room_id = r.id
       WHERE r.owner_id = ?
     `;
     const params = [landlordUserId];
@@ -280,8 +324,13 @@ export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
     }
 
     if (room_id) {
-      query += ' AND u.room_id = ?';
+      query += ' AND c.room_id = ?';
       params.push(normalizePositiveInt(room_id, 'Phong'));
+    }
+
+    if (contract_id) {
+      query += ' AND u.contract_id = ?';
+      params.push(normalizePositiveInt(contract_id, 'Hop dong'));
     }
 
     query += ' ORDER BY u.year DESC, u.month DESC, r.room_number ASC';
@@ -293,25 +342,28 @@ export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
   }
 };
 
-export const deleteUtilityReading = async (roomId, month, year, landlordUserId) => {
-  const normalizedRoomId = normalizePositiveInt(roomId, 'Phong');
+export const deleteUtilityReading = async (contractId, month, year, landlordUserId) => {
+  const normalizedContractId = normalizePositiveInt(contractId, 'Hop dong');
   const normalizedMonth = normalizePositiveInt(month, 'Thang');
   const normalizedYear = normalizePositiveInt(year, 'Nam');
   const connection = await pool.getConnection();
 
   try {
-    const [roomCheck] = await connection.query(
-      'SELECT id FROM rooms WHERE id = ? AND owner_id = ?',
-      [normalizedRoomId, landlordUserId]
+    const [contractCheck] = await connection.query(
+      `SELECT c.id
+       FROM contracts c
+       INNER JOIN rooms r ON c.room_id = r.id
+       WHERE c.id = ? AND r.owner_id = ?`,
+      [normalizedContractId, landlordUserId]
     );
 
-    if (roomCheck.length === 0) {
-      throw new Error('Phong khong ton tai hoac khong thuoc ve ban');
+    if (contractCheck.length === 0) {
+      throw new Error('Hop dong khong ton tai hoac khong thuoc ve ban');
     }
 
     const [existing] = await connection.query(
-      'SELECT id FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-      [normalizedRoomId, normalizedMonth, normalizedYear]
+      'SELECT id FROM utilities WHERE contract_id = ? AND month = ? AND year = ?',
+      [normalizedContractId, normalizedMonth, normalizedYear]
     );
 
     if (existing.length === 0) {
@@ -319,12 +371,12 @@ export const deleteUtilityReading = async (roomId, month, year, landlordUserId) 
     }
 
     await connection.query(
-      'DELETE FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-      [normalizedRoomId, normalizedMonth, normalizedYear]
+      'DELETE FROM utilities WHERE contract_id = ? AND month = ? AND year = ?',
+      [normalizedContractId, normalizedMonth, normalizedYear]
     );
 
     return {
-      room_id: normalizedRoomId,
+      contract_id: normalizedContractId,
       month: normalizedMonth,
       year: normalizedYear,
     };

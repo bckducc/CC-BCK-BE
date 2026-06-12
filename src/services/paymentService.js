@@ -91,7 +91,8 @@ export const recordPayment = async (invoiceId, landlordUserId, paymentData) => {
     const [invoiceCheck] = await connection.query(
       `SELECT i.*, r.owner_id
        FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
+       INNER JOIN contracts c ON i.contract_id = c.id
+       INNER JOIN rooms r ON c.room_id = r.id
        WHERE i.id = ?`,
       [invoiceId]
     );

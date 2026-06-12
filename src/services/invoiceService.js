@@ -1,7 +1,6 @@
 import pool from '../config/database.js';
 import { createNotification } from './notificationService.js';
 
-const DEFAULT_VAT_PERCENT = 10;
 const VALID_STATUSES = ['pending', 'paid', 'overdue', 'cancelled'];
 const VALID_PAYMENT_METHODS = ['cash', 'bank_transfer', 'other'];
 
@@ -52,7 +51,7 @@ const normalizeInvoice = (invoice) => {
     return invoice;
   }
 
-  const subtotal = toNumber(invoice.subtotal_amount, (
+  const totalAmount = toNumber(invoice.total_amount, (
     toNumber(invoice.room_fee) +
     toNumber(invoice.service_fee) +
     toNumber(invoice.electric_fee) +
@@ -60,16 +59,11 @@ const normalizeInvoice = (invoice) => {
     toNumber(invoice.other_fees)
   ));
 
-  const vatAmount = toNumber(invoice.vat_amount);
-
   return {
     ...invoice,
-    subtotal_amount: subtotal,
-    vat_percent: toNumber(invoice.vat_percent, DEFAULT_VAT_PERCENT),
-    vat_amount: vatAmount,
+    total_amount: totalAmount,
     discount: toNumber(invoice.discount),
-    total_amount: toNumber(invoice.total_amount, subtotal + vatAmount),
-    final_amount: toNumber(invoice.final_amount, subtotal + vatAmount - toNumber(invoice.discount)),
+    final_amount: toNumber(invoice.final_amount, totalAmount - toNumber(invoice.discount)),
   };
 };
 
@@ -83,8 +77,8 @@ const getInvoiceDetailsById = async (connection, invoiceId) => {
             l.bank_name, l.bank_account_number, l.bank_account_name
      FROM invoices i
      INNER JOIN contracts c ON i.contract_id = c.id
-     INNER JOIN rooms r ON i.room_id = r.id
-     INNER JOIN tenant t ON i.tenant_id = t.user_id
+     INNER JOIN rooms r ON c.room_id = r.id
+     INNER JOIN tenant t ON c.tenant_id = t.user_id
      INNER JOIN landlord l ON r.owner_id = l.user_id
      WHERE i.id = ?`,
     [invoiceId]
@@ -96,7 +90,6 @@ const getInvoiceDetailsById = async (connection, invoiceId) => {
 export const generateMonthlyInvoices = async (landlordUserId, month, year, options = {}) => {
   const normalizedMonth = requirePositiveInt(month, 'Thang');
   const normalizedYear = requirePositiveInt(year, 'Nam');
-  const vatPercent = toNumber(options.vat_percent, DEFAULT_VAT_PERCENT);
   const connection = await pool.getConnection();
 
   if (normalizedMonth > 12) {
@@ -140,8 +133,8 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
       }
 
       const [utilityRows] = await connection.query(
-        'SELECT * FROM utilities WHERE room_id = ? AND month = ? AND year = ?',
-        [contract.room_id, normalizedMonth, normalizedYear]
+        'SELECT * FROM utilities WHERE contract_id = ? AND month = ? AND year = ?',
+        [contract.id, normalizedMonth, normalizedYear]
       );
 
       let electricFee = 0;
@@ -175,23 +168,18 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
       const roomFee = toNumber(contract.monthly_rent);
       const otherFees = toNumber(options.other_fees);
       const discount = toNumber(options.discount);
-      const subtotalAmount = roomFee + serviceFee + electricFee + waterFee + otherFees;
-      const vatAmount = Math.round((subtotalAmount * vatPercent / 100) * 100) / 100;
-      const totalAmount = subtotalAmount + vatAmount;
+      const totalAmount = roomFee + serviceFee + electricFee + waterFee + otherFees;
       const finalAmount = Math.max(0, totalAmount - discount);
       const dueDate = options.due_date || buildDueDate(normalizedMonth, normalizedYear);
 
       const [invoiceResult] = await connection.query(
         `INSERT INTO invoices (
-          room_id, tenant_id, contract_id, month, year,
+          contract_id, month, year,
           room_fee, service_fee, electric_fee, water_fee, other_fees,
-          subtotal_amount, vat_percent, vat_amount, discount,
-          total_amount, final_amount, due_date, status, created_at, updated_at
+          total_amount, discount, final_amount, due_date, status, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
         [
-          contract.room_id,
-          contract.tenant_id,
           contract.id,
           normalizedMonth,
           normalizedYear,
@@ -200,11 +188,8 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
           electricFee,
           waterFee,
           otherFees,
-          subtotalAmount,
-          vatPercent,
-          vatAmount,
-          discount,
           totalAmount,
+          discount,
           finalAmount,
           dueDate,
         ]
@@ -248,8 +233,9 @@ export const getInvoices = async (filters, landlordUserId) => {
     let query = `
       SELECT i.*, r.room_number, t.full_name as tenant_name, t.phone as tenant_phone
       FROM invoices i
-      INNER JOIN rooms r ON i.room_id = r.id
-      INNER JOIN tenant t ON i.tenant_id = t.user_id
+      INNER JOIN contracts c ON i.contract_id = c.id
+      INNER JOIN rooms r ON c.room_id = r.id
+      INNER JOIN tenant t ON c.tenant_id = t.user_id
       WHERE r.owner_id = ?
     `;
     const params = [landlordUserId];
@@ -270,7 +256,7 @@ export const getInvoices = async (filters, landlordUserId) => {
     }
 
     if (room_id) {
-      query += ' AND i.room_id = ?';
+      query += ' AND c.room_id = ?';
       params.push(requirePositiveInt(room_id, 'Phong'));
     }
 
@@ -290,7 +276,8 @@ export const getInvoiceById = async (invoiceId, landlordUserId) => {
     const [rows] = await connection.query(
       `SELECT i.id
        FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
+       INNER JOIN contracts c ON i.contract_id = c.id
+       INNER JOIN rooms r ON c.room_id = r.id
        WHERE i.id = ? AND r.owner_id = ?`,
       [invoiceId, landlordUserId]
     );
@@ -313,9 +300,10 @@ export const getTenantInvoices = async (tenantUserId, filters = {}) => {
     let query = `
       SELECT i.*, r.room_number, l.full_name as landlord_name
       FROM invoices i
-      INNER JOIN rooms r ON i.room_id = r.id
+      INNER JOIN contracts c ON i.contract_id = c.id
+      INNER JOIN rooms r ON c.room_id = r.id
       INNER JOIN landlord l ON r.owner_id = l.user_id
-      WHERE i.tenant_id = ?
+      WHERE c.tenant_id = ?
     `;
     const params = [tenantUserId];
 
@@ -335,7 +323,7 @@ export const getTenantInvoices = async (tenantUserId, filters = {}) => {
     }
 
     if (room_id) {
-      query += ' AND i.room_id = ?';
+      query += ' AND c.room_id = ?';
       params.push(requirePositiveInt(room_id, 'Phong'));
     }
 
@@ -353,7 +341,10 @@ export const getTenantInvoiceById = async (invoiceId, tenantUserId) => {
 
   try {
     const [rows] = await connection.query(
-      'SELECT id FROM invoices WHERE id = ? AND tenant_id = ?',
+      `SELECT i.id
+       FROM invoices i
+       INNER JOIN contracts c ON i.contract_id = c.id
+       WHERE i.id = ? AND c.tenant_id = ?`,
       [invoiceId, tenantUserId]
     );
 
@@ -382,9 +373,10 @@ export const confirmPayment = async (invoiceId, landlordUserId, paymentData = {}
     await connection.beginTransaction();
 
     const [invoiceRows] = await connection.query(
-      `SELECT i.*, r.owner_id
+      `SELECT i.*, r.owner_id, c.tenant_id
        FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
+       INNER JOIN contracts c ON i.contract_id = c.id
+       INNER JOIN rooms r ON c.room_id = r.id
        WHERE i.id = ?
        FOR UPDATE`,
       [invoiceId]
@@ -485,7 +477,8 @@ export const updateInvoiceStatus = async (invoiceId, status, landlordUserId) => 
     const [invoiceRows] = await connection.query(
       `SELECT i.id
        FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
+       INNER JOIN contracts c ON i.contract_id = c.id
+       INNER JOIN rooms r ON c.room_id = r.id
        WHERE i.id = ? AND r.owner_id = ?`,
       [invoiceId, landlordUserId]
     );
@@ -512,7 +505,8 @@ export const getUnpaidCount = async (landlordUserId) => {
     const [rows] = await connection.query(
       `SELECT COUNT(*) as count
        FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
+       INNER JOIN contracts c ON i.contract_id = c.id
+       INNER JOIN rooms r ON c.room_id = r.id
        WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')`,
       [landlordUserId]
     );
@@ -530,7 +524,8 @@ export const getRevenueByMonth = async (landlordUserId, year) => {
     const [rows] = await connection.query(
       `SELECT i.year, i.month, SUM(i.final_amount) as revenue, COUNT(*) as invoice_count
        FROM invoices i
-       INNER JOIN rooms r ON i.room_id = r.id
+       INNER JOIN contracts c ON i.contract_id = c.id
+       INNER JOIN rooms r ON c.room_id = r.id
        WHERE r.owner_id = ? AND i.year = ? AND i.status = 'paid'
        GROUP BY i.year, i.month
        ORDER BY i.month`,

@@ -3,20 +3,33 @@ import {
   getInvoices,
   getInvoiceById,
   getTenantInvoices,
+  getTenantInvoiceById,
   confirmPayment,
   updateInvoiceStatus,
 } from '../services/invoiceService.js';
 import * as paymentService from '../services/paymentService.js';
 
+const paginate = (rows, page = 1, limit = 20) => {
+  const currentPage = parseInt(page);
+  const pageSize = parseInt(limit);
+  const start = (currentPage - 1) * pageSize;
+
+  return {
+    data: rows.slice(start, start + pageSize),
+    total: rows.length,
+    page: currentPage,
+    limit: pageSize,
+  };
+};
+
 export const generateInvoices = async (req, res) => {
   try {
-    const landlordUserId = req.user.id;
     const { month, year } = req.body;
 
     if (!month || !year) {
       return res.status(400).json({
         success: false,
-        message: 'Tháng và năm là bắt buộc',
+        message: 'Thang va nam la bat buoc',
       });
     }
 
@@ -27,16 +40,16 @@ export const generateInvoices = async (req, res) => {
     if (year > currentYear || (year === currentYear && month > currentMonth)) {
       return res.status(400).json({
         success: false,
-        message: 'Không thể tạo hóa đơn cho tháng tương lai',
+        message: 'Khong the tao hoa don cho thang tuong lai',
       });
     }
 
-    const invoices = await generateMonthlyInvoices(landlordUserId, parseInt(month), parseInt(year));
+    const result = await generateMonthlyInvoices(req.user.id, parseInt(month), parseInt(year), req.body);
 
     return res.status(201).json({
       success: true,
-      message: `Tạo ${invoices.length} hóa đơn thành công`,
-      data: invoices,
+      message: `Tao ${result.created_count} hoa don thanh cong`,
+      data: result,
     });
   } catch (error) {
     console.error('Generate invoices error:', {
@@ -45,32 +58,24 @@ export const generateInvoices = async (req, res) => {
       value: { month: req.body.month, year: req.body.year },
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Tạo hóa đơn thất bại',
+      message: error.message || 'Tao hoa don that bai',
     });
   }
 };
 
 export const listInvoices = async (req, res) => {
   try {
-    const landlordUserId = req.user.id;
     const { status, month, year, room_id, page = 1, limit = 20 } = req.query;
-
-    const filters = { status, month, year, room_id };
-    const invoices = await getInvoices(filters, landlordUserId);
-
-    const start = (page - 1) * limit;
-    const paginatedInvoices = invoices.slice(start, start + parseInt(limit));
+    const invoices = await getInvoices({ status, month, year, room_id }, req.user.id);
+    const result = paginate(invoices, page, limit);
 
     return res.status(200).json({
       success: true,
-      data: paginatedInvoices,
-      total: invoices.length,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      ...result,
     });
   } catch (error) {
     console.error('List invoices error:', {
@@ -78,21 +83,18 @@ export const listInvoices = async (req, res) => {
       userId: req.user?.id,
       filters: req.query,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(500).json({
       success: false,
-      message: 'Không tải được danh sách hóa đơn',
+      message: 'Khong tai duoc danh sach hoa don',
     });
   }
 };
 
 export const getInvoice = async (req, res) => {
   try {
-    const { id } = req.params;
-    const landlordUserId = req.user.id;
-
-    const invoice = await getInvoiceById(id, landlordUserId);
+    const invoice = await getInvoiceById(req.params.id, req.user.id);
 
     return res.status(200).json({
       success: true,
@@ -104,58 +106,69 @@ export const getInvoice = async (req, res) => {
       invoiceId: req.params.id,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(404).json({
       success: false,
-      message: error.message || 'Không tìm thấy hóa đơn',
+      message: error.message || 'Khong tim thay hoa don',
     });
   }
 };
 
 export const listTenantInvoices = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    if (userRole !== 'tenant') {
-      return res.status(403).json({
-        success: false,
-        message: 'Chỉ người thuê mới có thể xem hóa đơn của mình',
-      });
-    }
-
-    const invoices = await getTenantInvoices(userId);
+    const { status, month, year, room_id, page = 1, limit = 20 } = req.query;
+    const invoices = await getTenantInvoices(req.user.id, { status, month, year, room_id });
+    const result = paginate(invoices, page, limit);
 
     return res.status(200).json({
       success: true,
-      data: invoices,
-      total: invoices.length,
+      ...result,
     });
   } catch (error) {
     console.error('List tenant invoices error:', {
       type: 'LIST_TENANT_INVOICES_ERROR',
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(500).json({
       success: false,
-      message: 'Không tải được danh sách hóa đơn',
+      message: 'Khong tai duoc danh sach hoa don',
+    });
+  }
+};
+
+export const getTenantInvoice = async (req, res) => {
+  try {
+    const invoice = await getTenantInvoiceById(req.params.id, req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      data: invoice,
+    });
+  } catch (error) {
+    console.error('Get tenant invoice error:', {
+      type: 'GET_TENANT_INVOICE_ERROR',
+      invoiceId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(403).json({
+      success: false,
+      message: error.message || 'Ban khong co quyen xem hoa don nay',
     });
   }
 };
 
 export const confirmInvoicePayment = async (req, res) => {
   try {
-    const { id } = req.params;
-    const landlordUserId = req.user.id;
-
-    const result = await confirmPayment(id, landlordUserId);
+    const result = await confirmPayment(req.params.id, req.user.id, req.body);
 
     return res.status(200).json({
       success: true,
-      message: 'Xác nhận thanh toán thành công',
+      message: 'Xac nhan thanh toan thanh cong',
       data: result,
     });
   } catch (error) {
@@ -165,33 +178,31 @@ export const confirmInvoicePayment = async (req, res) => {
       invoiceId: req.params.id,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Xác nhận thanh toán thất bại',
+      message: error.message || 'Xac nhan thanh toan that bai',
     });
   }
 };
 
 export const updateStatus = async (req, res) => {
   try {
-    const { id } = req.params;
-    const landlordUserId = req.user.id;
     const { status } = req.body;
 
     if (!status) {
       return res.status(400).json({
         success: false,
-        message: 'Trạng thái là bắt buộc',
+        message: 'Trang thai la bat buoc',
       });
     }
 
-    const result = await updateInvoiceStatus(id, status, landlordUserId);
+    const result = await updateInvoiceStatus(req.params.id, status, req.user.id);
 
     return res.status(200).json({
       success: true,
-      message: 'Cập nhật trạng thái thành công',
+      message: 'Cap nhat trang thai thanh cong',
       data: result,
     });
   } catch (error) {
@@ -202,90 +213,55 @@ export const updateStatus = async (req, res) => {
       value: req.body.status,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Cập nhật trạng thái thất bại',
+      message: error.message || 'Cap nhat trang thai that bai',
     });
   }
 };
 
 export const exportInvoicePDF = async (req, res) => {
   try {
-    const { id } = req.params;
-    const landlordUserId = req.user.id;
-    const userRole = req.user.role;
-    const userId = req.user.id;
+    const invoice = req.user.role === 'tenant'
+      ? await getTenantInvoiceById(req.params.id, req.user.id)
+      : await getInvoiceById(req.params.id, req.user.id);
 
-    let invoice;
-
-    if (userRole === 'landlord') {
-      invoice = await getInvoiceById(id, landlordUserId);
-    } else if (userRole === 'tenant') {
-      const invoices = await getTenantInvoices(userId);
-      invoice = invoices.find(inv => inv.id === parseInt(id));
-      
-      if (!invoice) {
-        return res.status(403).json({
-          success: false,
-          message: 'Bạn không có quyền xem hóa đơn này',
-        });
-      }
-      
-      const pool = (await import('../config/database.js')).default;
-      const connection = await pool.getConnection();
-      const [rows] = await connection.query(
-        `SELECT i.*, r.room_number, t.full_name as tenant_name, t.phone as tenant_phone
-         FROM invoices i
-         INNER JOIN rooms r ON i.room_id = r.id
-         INNER JOIN tenant t ON i.tenant_id = t.user_id
-         WHERE i.id = ?`,
-        [id]
-      );
-      connection.release();
-      invoice = rows[0];
-    } else {
-      return res.status(403).json({
-        success: false,
-        message: 'Không có quyền truy cập',
-      });
-    }
-
+    const money = (value) => Number(value || 0).toLocaleString('vi-VN');
     const invoiceText = `
 =========================================
-         HÓA ĐƠN TIỀN PHÒNG
+           HOA DON TIEN PHONG
 =========================================
-Mã hóa đơn: ${invoice.id}
-Tháng: ${invoice.month}/${invoice.year}
+Ma hoa don: ${invoice.id}
+Thang: ${invoice.month}/${invoice.year}
 
-Phòng: ${invoice.room_number}
-Người thuê: ${invoice.tenant_name}
-Điện thoại: ${invoice.tenant_phone}
+Phong: ${invoice.room_number}
+Nguoi thue: ${invoice.tenant_name}
+Dien thoai: ${invoice.tenant_phone || 'N/A'}
+Chu nha: ${invoice.landlord_name || 'N/A'}
 
 -----------------------------------------
-CHI TIẾT:
+CHI TIET:
 -----------------------------------------
-Tiền phòng:     ${invoice.room_fee.toLocaleString('vi-VN')} VNĐ
-Tiền dịch vụ:   ${invoice.service_fee.toLocaleString('vi-VN')} VNĐ
-Tiền điện:      ${invoice.electric_fee.toLocaleString('vi-VN')} VNĐ
-Tiền nước:      ${invoice.water_fee.toLocaleString('vi-VN')} VNĐ
-Phí khác:       ${invoice.other_fees.toLocaleString('vi-VN')} VNĐ
+Tien phong:      ${money(invoice.room_fee)} VND
+Tien dich vu:    ${money(invoice.service_fee)} VND
+Tien dien:       ${money(invoice.electric_fee)} VND
+Tien nuoc:       ${money(invoice.water_fee)} VND
+Phi khac:        ${money(invoice.other_fees)} VND
+Tong cong:       ${money(invoice.total_amount)} VND
+Giam gia:        ${money(invoice.discount)} VND
 -----------------------------------------
-Tổng cộng:      ${invoice.total_amount.toLocaleString('vi-VN')} VNĐ
-Giảm giá:       ${invoice.discount.toLocaleString('vi-VN')} VNĐ
------------------------------------------
-THÀNH TIỀN:     ${invoice.final_amount.toLocaleString('vi-VN')} VNĐ
+THANH TIEN:      ${money(invoice.final_amount)} VND
 =========================================
 
-Trạng thái: ${invoice.status === 'paid' ? 'Đã thanh toán' : invoice.status === 'overdue' ? 'Quá hạn' : invoice.status === 'cancelled' ? 'Đã hủy' : 'Chưa thanh toán'}
-
-Hạn thanh toán: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('vi-VN') : 'N/A'}
+Trang thai: ${invoice.status}
+Han thanh toan: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('vi-VN') : 'N/A'}
 `;
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="hoadon_${invoice.month}_${invoice.year}_${invoice.room_number}.txt"`);
-    
+
     return res.status(200).send(invoiceText);
   } catch (error) {
     console.error('Export invoice error:', {
@@ -293,58 +269,45 @@ Hạn thanh toán: ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateS
       invoiceId: req.params.id,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Xuất hóa đơn thất bại',
+      message: error.message || 'Xuat hoa don that bai',
     });
   }
 };
 
 export const recordInvoicePayment = async (req, res) => {
   try {
-    const { id } = req.params;
-    const landlordUserId = req.user.id;
-    const userId = req.user.id;
     const { amount, payment_date, payment_method, transaction_code, note } = req.body;
 
     if (!amount) {
       return res.status(400).json({
         success: false,
-        message: 'Số tiền thanh toán là bắt buộc',
+        message: 'So tien thanh toan la bat buoc',
       });
     }
 
     if (!payment_date) {
       return res.status(400).json({
         success: false,
-        message: 'Ngày thanh toán là bắt buộc',
+        message: 'Ngay thanh toan la bat buoc',
       });
     }
 
-    const paymentAmount = parseFloat(amount);
-    if (isNaN(paymentAmount) || paymentAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Số tiền thanh toán phải là số dương',
-      });
-    }
-
-    const paymentData = {
-      amount: paymentAmount,
+    const result = await paymentService.recordPayment(req.params.id, req.user.id, {
+      amount: parseFloat(amount),
       payment_date,
       payment_method,
       transaction_code,
       note,
-      received_by: userId,
-    };
-
-    const result = await paymentService.recordPayment(id, landlordUserId, paymentData);
+      received_by: req.user.id,
+    });
 
     return res.status(200).json({
       success: true,
-      message: 'Ghi nhận thanh toán thành công',
+      message: 'Ghi nhan thanh toan thanh cong',
       data: result,
     });
   } catch (error) {
@@ -355,74 +318,42 @@ export const recordInvoicePayment = async (req, res) => {
       value: { amount: req.body.amount },
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
-    if (error.message === 'Invoice not found' || error.message.includes('Không tìm thấy')) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy hóa đơn',
-      });
-    }
-
-    if (error.message.includes('Unauthorized') || error.message.includes('không có quyền')) {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền ghi nhận thanh toán cho hóa đơn này',
-      });
-    }
-
     return res.status(400).json({
       success: false,
-      message: error.message || 'Ghi nhận thanh toán thất bại',
+      message: error.message || 'Ghi nhan thanh toan that bai',
     });
   }
 };
 
 export const getInvoicePayments = async (req, res) => {
   try {
-    const { id } = req.params;
-    const landlordUserId = req.user.id;
-
-    const invoice = await getInvoiceById(id, landlordUserId);
-
-    const payments = await paymentService.getPaymentsForInvoice(id);
-
-    const totalPaid = await paymentService.getTotalPaymentsForInvoice(id);
-
+    const invoice = await getInvoiceById(req.params.id, req.user.id);
+    const payments = await paymentService.getPaymentsForInvoice(req.params.id);
+    const totalPaid = await paymentService.getTotalPaymentsForInvoice(req.params.id);
     const invoiceTotal = parseFloat(invoice.final_amount);
-    const remainingBalance = Math.max(0, invoiceTotal - totalPaid);
 
     return res.status(200).json({
       success: true,
       data: {
         payments,
         total_paid: totalPaid,
-        remaining_balance: remainingBalance,
+        remaining_balance: Math.max(0, invoiceTotal - totalPaid),
         invoice_total: invoiceTotal,
       },
     });
   } catch (error) {
-    console.error('Get invoice payments error:', error);
-
-    if (error.message && error.message.includes('not found')) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy hóa đơn',
-      });
-    }
-
     console.error('Get invoice payments error:', {
       type: 'GET_INVOICE_PAYMENTS_ERROR',
       invoiceId: req.params.id,
       userId: req.user?.id,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
     return res.status(500).json({
       success: false,
-      message: 'Không tải được danh sách thanh toán',
+      message: 'Khong tai duoc danh sach thanh toan',
     });
   }
 };
