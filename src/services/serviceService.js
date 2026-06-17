@@ -217,7 +217,7 @@ export const getRoomServices = async (roomId) => {
       throw new Error('Phòng không tồn tại');
     }
     const [rows] = await connection.query(
-      `SELECT rs.id, rs.quantity, rs.applied_date, s.id as service_id, s.service_name, s.price, s.unit, s.is_optional
+      `SELECT rs.id, rs.room_id, rs.quantity, rs.applied_date, s.id as service_id, s.service_name, s.price, s.unit, s.is_optional
        FROM room_services rs
        INNER JOIN services s ON rs.service_id = s.id
        WHERE rs.room_id = ?`,

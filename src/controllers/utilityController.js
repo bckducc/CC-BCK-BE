@@ -4,6 +4,7 @@ import {
   getUtilityReadingsByContract,
   getUtilityReadingsByRoom,
   getAllUtilityReadings,
+  getUtilityReadingsByTenant,
   deleteUtilityReading,
 } from '../services/utilityService.js';
 
@@ -186,6 +187,37 @@ export const listReadings = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Khong tai duoc danh sach chi so dien nuoc',
+    });
+  }
+};
+
+export const listMyReadings = async (req, res) => {
+  try {
+    const tenantUserId = req.user.id;
+    const { month, year, contract_id, page = 1, limit = 100 } = req.query;
+
+    const utilities = await getUtilityReadingsByTenant(tenantUserId, { month, year, contract_id });
+    const start = (page - 1) * limit;
+    const paginatedUtilities = utilities.slice(start, start + parseInt(limit));
+
+    return res.status(200).json({
+      success: true,
+      data: paginatedUtilities,
+      total: utilities.length,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  } catch (error) {
+    console.error('List my utility readings error:', {
+      type: 'LIST_MY_UTILITY_READINGS_ERROR',
+      userId: req.user?.id,
+      filters: req.query,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      message: 'Khong tai duoc lich su dien nuoc',
     });
   }
 };

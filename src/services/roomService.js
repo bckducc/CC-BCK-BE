@@ -65,7 +65,6 @@ export const createRoom = async (roomData, ownerId) => {
       floor,
       area,
       price,
-      status,
       description,
       deposit,
     } = roomData;
@@ -76,11 +75,6 @@ export const createRoom = async (roomData, ownerId) => {
 
     validatePrice(price, 'room_price');
     validatePrice(deposit || 0, 'deposit');
-
-    const validStatuses = ['available', 'rented', 'maintenance'];
-    if (status && !validStatuses.includes(status)) {
-      throw new Error(`Trạng thái không hợp lệ. Chỉ chấp nhận: ${validStatuses.join(', ')}`);
-    }
 
     const connection = await pool.getConnection();
 
@@ -103,7 +97,7 @@ export const createRoom = async (roomData, ownerId) => {
         floor || null, 
         area || null, 
         price, 
-        status || 'available', 
+        'available', 
         description || null, 
         ownerId
       ]
@@ -117,7 +111,7 @@ export const createRoom = async (roomData, ownerId) => {
       floor,
       area,
       price,
-      status: status || 'available',
+      status: 'available',
       description,
       owner_id: ownerId,
     };

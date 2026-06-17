@@ -342,6 +342,49 @@ export const getAllUtilityReadings = async (landlordUserId, filters = {}) => {
   }
 };
 
+export const getUtilityReadingsByTenant = async (tenantUserId, filters = {}) => {
+  const { month, year, contract_id } = filters;
+  const connection = await pool.getConnection();
+
+  try {
+    let query = `
+      SELECT u.id, u.contract_id, c.room_id, u.month, u.year,
+             u.electric_old, u.electric_new, u.electric_price,
+             u.water_old, u.water_new, u.water_price,
+             u.recorded_date, u.note,
+             c.contract_code, c.status as contract_status,
+             r.room_number, r.floor
+      FROM utilities u
+      INNER JOIN contracts c ON u.contract_id = c.id
+      INNER JOIN rooms r ON c.room_id = r.id
+      WHERE c.tenant_id = ?
+    `;
+    const params = [tenantUserId];
+
+    if (month) {
+      query += ' AND u.month = ?';
+      params.push(normalizePositiveInt(month, 'Thang'));
+    }
+
+    if (year) {
+      query += ' AND u.year = ?';
+      params.push(normalizePositiveInt(year, 'Nam'));
+    }
+
+    if (contract_id) {
+      query += ' AND u.contract_id = ?';
+      params.push(normalizePositiveInt(contract_id, 'Hop dong'));
+    }
+
+    query += ' ORDER BY u.year DESC, u.month DESC';
+
+    const [rows] = await connection.query(query, params);
+    return rows;
+  } finally {
+    connection.release();
+  }
+};
+
 export const deleteUtilityReading = async (contractId, month, year, landlordUserId) => {
   const normalizedContractId = normalizePositiveInt(contractId, 'Hop dong');
   const normalizedMonth = normalizePositiveInt(month, 'Thang');

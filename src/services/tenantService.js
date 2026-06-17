@@ -230,7 +230,6 @@ export const updateTenant = async (tenantId, tenantData) => {
       return existing[0];
     }
 
-    updateFields.push('updated_at = NOW()');
     updateValues.push(tenantId);
 
     const query = `UPDATE \`tenant\` SET ${updateFields.join(', ')} WHERE user_id = ?`;

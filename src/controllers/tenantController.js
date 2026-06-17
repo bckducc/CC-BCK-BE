@@ -27,10 +27,14 @@ export const createNewTenant = async (req, res) => {
       success: true,
       message: 'Tạo tài khoản người thuê thành công',
       data: {
-        id: tenant.id,
+        id: tenant.user_id,
+        user_id: tenant.user_id,
         username: tenant.username,
         full_name: tenant.full_name,
         phone: tenant.phone,
+        identity_card: tenant.identity_card,
+        gender: tenant.gender,
+        is_active: tenant.is_active,
       },
     });
   } catch (error) {

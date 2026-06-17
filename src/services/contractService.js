@@ -189,9 +189,12 @@ export const getContractByTenant = async (tenantUserId) => {
   
   try {
     const [rows] = await connection.query(
-      `SELECT c.*, r.room_number, r.floor
+      `SELECT c.*, r.room_number, r.floor, r.area, r.price as room_price, r.description,
+              l.full_name as landlord_name, l.phone as landlord_phone,
+              l.bank_name, l.bank_account_number, l.bank_account_name
        FROM contracts c
        INNER JOIN rooms r ON c.room_id = r.id
+       LEFT JOIN landlord l ON r.owner_id = l.user_id
        WHERE c.tenant_id = ? AND c.status = 'active'
        ORDER BY c.created_at DESC
        LIMIT 1`,

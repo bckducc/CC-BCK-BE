@@ -5,6 +5,7 @@ import {
   getContractReadings,
   getRoomReadings,
   listReadings,
+  listMyReadings,
   removeReading,
 } from '../controllers/utilityController.js';
 
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post('/', requireRole('landlord'), recordReading);
+router.get('/my/readings', requireRole('tenant'), listMyReadings);
 router.get('/', requireRole('landlord'), listReadings);
 router.get('/reading', requireRole('landlord'), getReading);
 router.get('/contract/:contract_id', requireRole('landlord'), getContractReadings);
