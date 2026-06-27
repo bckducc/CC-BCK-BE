@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   generateInvoices,
+  previewGeneratedInvoice,
   listInvoices,
   getInvoice,
   listTenantInvoices,
@@ -20,6 +21,7 @@ router.get('/my/invoices', requireRole('tenant'), listTenantInvoices);
 router.get('/my/invoices/:id', requireRole('tenant'), getTenantInvoice);
 
 router.post('/generate', requireRole('landlord'), generateInvoices);
+router.post('/preview', requireRole('landlord'), previewGeneratedInvoice);
 router.get('/', requireRole('landlord'), listInvoices);
 router.put('/:id/pay', requireRole('landlord'), confirmInvoicePayment);
 

@@ -34,6 +34,23 @@ const normalizePaymentDate = (paymentDate) => {
   return paymentDate;
 };
 
+const normalizeDueDate = (dueDate) => {
+  if (!dueDate) {
+    return null;
+  }
+
+  if (typeof dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new Error('Han thanh toan phai co dinh dang YYYY-MM-DD');
+  }
+
+  const date = new Date(`${dueDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dueDate) {
+    throw new Error('Han thanh toan khong hop le');
+  }
+
+  return dueDate;
+};
+
 const buildDueDate = (month, year) => {
   let dueMonth = month + 1;
   let dueYear = year;
@@ -87,6 +104,132 @@ const getInvoiceDetailsById = async (connection, invoiceId) => {
   return normalizeInvoice(rows[0]);
 };
 
+const calculateInvoiceAmounts = async (connection, contract, month, year, options = {}) => {
+  const [utilityRows] = await connection.query(
+    'SELECT * FROM utilities WHERE contract_id = ? AND month = ? AND year = ?',
+    [contract.id, month, year]
+  );
+
+  let electricFee = 0;
+  let waterFee = 0;
+  let utilityWarning = null;
+
+  if (utilityRows.length > 0) {
+    const utility = utilityRows[0];
+    electricFee = Math.max(0, utility.electric_new - utility.electric_old) * toNumber(utility.electric_price);
+    waterFee = Math.max(0, utility.water_new - utility.water_old) * toNumber(utility.water_price);
+  } else {
+    utilityWarning = 'Chua nhap chi so dien nuoc, hoa don duoc tao voi tien dien nuoc bang 0';
+  }
+
+  const [roomServices] = await connection.query(
+    `SELECT rs.quantity, s.id as service_id, s.service_name, s.price, s.unit
+     FROM room_services rs
+     INNER JOIN services s ON rs.service_id = s.id
+     WHERE rs.room_id = ?`,
+    [contract.room_id]
+  );
+
+  const serviceFee = roomServices.reduce((sum, service) => {
+    return sum + toNumber(service.price) * toNumber(service.quantity, 1);
+  }, 0);
+
+  const roomFee = toNumber(contract.room_price ?? contract.monthly_rent);
+  const otherFees = toNumber(options.other_fees);
+  const discount = toNumber(options.discount);
+  const totalAmount = roomFee + serviceFee + electricFee + waterFee + otherFees;
+  const finalAmount = Math.max(0, totalAmount - discount);
+  const dueDate = normalizeDueDate(options.due_date) || buildDueDate(month, year);
+
+  return {
+    contract_id: contract.id,
+    tenant_id: contract.tenant_id,
+    room_id: contract.room_id,
+    room_number: contract.room_number,
+    tenant_name: contract.tenant_name,
+    month,
+    year,
+    room_fee: roomFee,
+    service_fee: serviceFee,
+    electric_fee: electricFee,
+    water_fee: waterFee,
+    other_fees: otherFees,
+    discount,
+    total_amount: totalAmount,
+    final_amount: finalAmount,
+    due_date: dueDate,
+    utility: utilityRows[0] || null,
+    services: roomServices,
+    warning: utilityWarning,
+  };
+};
+
+const getActiveContractsForInvoice = async (connection, landlordUserId, filters = {}) => {
+  const contractId = filters.contract_id ? requirePositiveInt(filters.contract_id, 'Hop dong') : null;
+  const tenantId = filters.tenant_id ? requirePositiveInt(filters.tenant_id, 'Nguoi thue') : null;
+
+  let contractsQuery = `
+    SELECT c.id, c.room_id, c.tenant_id, c.monthly_rent,
+           r.room_number, r.owner_id,
+           r.price as room_price,
+           t.full_name as tenant_name
+    FROM contracts c
+    INNER JOIN rooms r ON c.room_id = r.id
+    INNER JOIN tenant t ON c.tenant_id = t.user_id
+    WHERE r.owner_id = ? AND c.status = 'active'
+  `;
+  const contractsParams = [landlordUserId];
+
+  if (contractId) {
+    contractsQuery += ' AND c.id = ?';
+    contractsParams.push(contractId);
+  }
+
+  if (tenantId) {
+    contractsQuery += ' AND c.tenant_id = ?';
+    contractsParams.push(tenantId);
+  }
+
+  const [contracts] = await connection.query(contractsQuery, contractsParams);
+  return contracts;
+};
+
+export const previewInvoice = async (landlordUserId, month, year, options = {}) => {
+  const normalizedMonth = requirePositiveInt(month, 'Thang');
+  const normalizedYear = requirePositiveInt(year, 'Nam');
+  const connection = await pool.getConnection();
+
+  if (normalizedMonth > 12) {
+    throw new Error('Thang phai tu 1 den 12');
+  }
+
+  try {
+    const contracts = await getActiveContractsForInvoice(connection, landlordUserId, options);
+
+    if (contracts.length === 0) {
+      throw new Error('Khong co hop dong dang hoat dong phu hop');
+    }
+
+    if (contracts.length > 1) {
+      throw new Error('Vui long chon mot nguoi thue de xem truoc hoa don');
+    }
+
+    const [existingInvoice] = await connection.query(
+      'SELECT id FROM invoices WHERE contract_id = ? AND month = ? AND year = ?',
+      [contracts[0].id, normalizedMonth, normalizedYear]
+    );
+
+    const preview = await calculateInvoiceAmounts(connection, contracts[0], normalizedMonth, normalizedYear, options);
+
+    return {
+      ...preview,
+      existing_invoice_id: existingInvoice[0]?.id || null,
+    };
+  } finally {
+    connection.release();
+  }
+};
+
 export const generateMonthlyInvoices = async (landlordUserId, month, year, options = {}) => {
   const normalizedMonth = requirePositiveInt(month, 'Thang');
   const normalizedYear = requirePositiveInt(year, 'Nam');
@@ -99,17 +242,10 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
   try {
     await connection.beginTransaction();
 
-    const [contracts] = await connection.query(
-      `SELECT c.id, c.room_id, c.tenant_id, c.monthly_rent,
-              r.room_number, r.owner_id
-       FROM contracts c
-       INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.owner_id = ? AND c.status = 'active'`,
-      [landlordUserId]
-    );
+    const contracts = await getActiveContractsForInvoice(connection, landlordUserId, options);
 
     if (contracts.length === 0) {
-      throw new Error('Khong co hop dong dang hoat dong');
+      throw new Error('Khong co hop dong dang hoat dong phu hop');
     }
 
     const created = [];
@@ -132,45 +268,16 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
         continue;
       }
 
-      const [utilityRows] = await connection.query(
-        'SELECT * FROM utilities WHERE contract_id = ? AND month = ? AND year = ?',
-        [contract.id, normalizedMonth, normalizedYear]
-      );
+      const calculated = await calculateInvoiceAmounts(connection, contract, normalizedMonth, normalizedYear, options);
 
-      let electricFee = 0;
-      let waterFee = 0;
-
-      if (utilityRows.length > 0) {
-        const utility = utilityRows[0];
-        electricFee = Math.max(0, utility.electric_new - utility.electric_old) * toNumber(utility.electric_price);
-        waterFee = Math.max(0, utility.water_new - utility.water_old) * toNumber(utility.water_price);
-      } else {
+      if (calculated.warning) {
         warnings.push({
           contract_id: contract.id,
           room_id: contract.room_id,
           room_number: contract.room_number,
-          message: 'Chua nhap chi so dien nuoc, hoa don duoc tao voi tien dien nuoc bang 0',
+          message: calculated.warning,
         });
       }
-
-      const [roomServices] = await connection.query(
-        `SELECT rs.quantity, s.price
-         FROM room_services rs
-         INNER JOIN services s ON rs.service_id = s.id
-         WHERE rs.room_id = ?`,
-        [contract.room_id]
-      );
-
-      const serviceFee = roomServices.reduce((sum, service) => {
-        return sum + toNumber(service.price) * toNumber(service.quantity, 1);
-      }, 0);
-
-      const roomFee = toNumber(contract.monthly_rent);
-      const otherFees = toNumber(options.other_fees);
-      const discount = toNumber(options.discount);
-      const totalAmount = roomFee + serviceFee + electricFee + waterFee + otherFees;
-      const finalAmount = Math.max(0, totalAmount - discount);
-      const dueDate = options.due_date || buildDueDate(normalizedMonth, normalizedYear);
 
       const [invoiceResult] = await connection.query(
         `INSERT INTO invoices (
@@ -183,15 +290,15 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
           contract.id,
           normalizedMonth,
           normalizedYear,
-          roomFee,
-          serviceFee,
-          electricFee,
-          waterFee,
-          otherFees,
-          totalAmount,
-          discount,
-          finalAmount,
-          dueDate,
+          calculated.room_fee,
+          calculated.service_fee,
+          calculated.electric_fee,
+          calculated.water_fee,
+          calculated.other_fees,
+          calculated.total_amount,
+          calculated.discount,
+          calculated.final_amount,
+          calculated.due_date,
         ]
       );
 
@@ -200,7 +307,7 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
 
       await createNotification(contract.tenant_id, {
         title: `Hoa don moi - Thang ${normalizedMonth}/${normalizedYear}`,
-        content: `Hoa don phong ${contract.room_number} thang ${normalizedMonth}/${normalizedYear} da duoc tao voi tong tien ${finalAmount.toLocaleString('vi-VN')} VND. Han thanh toan: ${dueDate}.`,
+        content: `Hoa don phong ${contract.room_number} thang ${normalizedMonth}/${normalizedYear} da duoc tao voi tong tien ${calculated.final_amount.toLocaleString('vi-VN')} VND. Han thanh toan: ${calculated.due_date}.`,
         type: 'invoice',
         reference_id: invoiceResult.insertId,
         reference_type: 'invoice',

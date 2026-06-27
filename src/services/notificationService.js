@@ -1,7 +1,7 @@
 import pool from '../config/database.js';
 
 export const createNotification = async (userId, notifData) => {
-  const { title, content, type, reference_id, reference_type } = notifData;
+  const { title, content, type } = notifData;
 
   if (!title || !content) {
     throw new Error('Tiêu đề và nội dung là bắt buộc');
@@ -11,9 +11,9 @@ export const createNotification = async (userId, notifData) => {
   
   try {
     const [result] = await connection.query(
-      `INSERT INTO notifications (user_id, title, content, type, reference_id, reference_type) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, title, content, type || 'announcement', reference_id || null, reference_type || null]
+      `INSERT INTO notifications (user_id, title, content, type) 
+       VALUES (?, ?, ?, ?)`,
+      [userId, title, content, type || 'announcement']
     );
 
     return {

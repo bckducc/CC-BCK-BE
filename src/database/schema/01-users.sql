@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS tenant (
     full_name VARCHAR(100) NOT NULL,
     phone VARCHAR(10),
     identity_card VARCHAR(20),
-    birthday DATE,
     gender ENUM('male', 'female', 'other'),
     address VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

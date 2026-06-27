@@ -22,7 +22,6 @@ Table tenant {
   full_name varchar(100) [not null]
   phone varchar(10)
   identity_card varchar(20)
-  birthday date
   gender enum('male','female','other')
   address varchar(255)
   created_at timestamp [default: `CURRENT_TIMESTAMP`]

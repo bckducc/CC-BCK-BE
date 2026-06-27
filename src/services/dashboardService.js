@@ -4,6 +4,14 @@ export const getLandlordDashboard = async (landlordId) => {
   const connection = await pool.getConnection();
   
   try {
+    const [rooms] = await connection.query(
+      `SELECT id, room_number, floor, area, price, status, description, created_at
+       FROM rooms
+       WHERE owner_id = ?
+       ORDER BY room_number ASC`,
+      [landlordId]
+    );
+
     const [roomsStats] = await connection.query(
       `SELECT 
         COUNT(*) as total,
@@ -23,10 +31,13 @@ export const getLandlordDashboard = async (landlordId) => {
     );
 
     const [tenantsStats] = await connection.query(
-      `SELECT COUNT(*) as total_tenants
+      `SELECT COUNT(DISTINCT t.user_id) as total_tenants
        FROM \`tenant\` t
        INNER JOIN users u ON t.user_id = u.id
-       WHERE u.is_active = TRUE`
+       INNER JOIN contracts c ON c.tenant_id = t.user_id
+       INNER JOIN rooms r ON c.room_id = r.id
+       WHERE r.owner_id = ? AND c.status = 'active' AND u.is_active = TRUE`,
+      [landlordId]
     );
 
     const [unpaidStats] = await connection.query(
@@ -78,6 +89,7 @@ export const getLandlordDashboard = async (landlordId) => {
         available: roomsStats[0].available || 0,
         rented: roomsStats[0].rented || 0,
         maintenance: roomsStats[0].maintenance || 0,
+        list: rooms,
       },
       contracts: {
         active: contractsStats[0].active_contracts || 0,
@@ -153,7 +165,7 @@ export const getTenantDashboard = async (tenantUserId) => {
         room_number: activeContract.room_number,
         floor: activeContract.floor,
         area: activeContract.area,
-        monthly_price: activeContract.monthly_price,
+        monthly_price: activeContract.monthly_rent,
         start_date: activeContract.start_date,
         end_date: activeContract.end_date,
       } : null,

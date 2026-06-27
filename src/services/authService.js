@@ -70,7 +70,6 @@ export const getUserWithTenantInfo = async (userId) => {
         t.full_name,
         t.phone,
         t.identity_card,
-        t.birthday,
         t.gender
       FROM users u
       LEFT JOIN \`tenant\` t ON u.id = t.user_id

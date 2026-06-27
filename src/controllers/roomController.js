@@ -168,11 +168,12 @@ export const removeRoom = async (req, res) => {
       });
     }
 
-    await deleteRoom(id, ownerId);
+    const result = await deleteRoom(id, ownerId);
 
     return res.status(200).json({
       success: true,
       message: 'Xóa phòng thành công',
+      data: result,
     });
   } catch (error) {
     console.error('Delete room error:', {

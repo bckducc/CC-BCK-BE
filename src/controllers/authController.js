@@ -1,4 +1,4 @@
-import { findUserByUsername, getUserWithLandlordInfo, getUserWithTenantInfo, validatePassword } from '../services/authService.js';
+import { findUserByUsername, getUserWithLandlordInfo, getUserWithTenantInfo } from '../services/authService.js';
 import { generateToken } from '../middleware/auth.js';
 import bcrypt from 'bcryptjs';
 
@@ -42,7 +42,7 @@ export const login = async (req, res) => {
     }
 
     if (!passwordMatch) {
-      console.log(`Password mismatch for user: ${username}`);  
+      console.log(`Password mismatch for user: ${username}`);
       return res.status(401).json({
         success: false,
         message: 'Tên tài khoản hoặc mật khẩu không chính xác',
@@ -50,12 +50,12 @@ export const login = async (req, res) => {
     }
 
     let userWithInfo;
-    
+
     if (user.role === 'landlord') {
       userWithInfo = await getUserWithLandlordInfo(user.id);
-      
+
       if (!userWithInfo) {
-        console.log(`Landlord info not found for user id: ${user.id}`);  
+        console.log(`Landlord info not found for user id: ${user.id}`);
         return res.status(404).json({
           success: false,
           message: 'Thông tin chủ nhà không tìm thấy',
@@ -63,9 +63,9 @@ export const login = async (req, res) => {
       }
     } else if (user.role === 'tenant') {
       userWithInfo = await getUserWithTenantInfo(user.id);
-      
+
       if (!userWithInfo) {
-        console.log(`Tenant info not found for user id: ${user.id}`);  
+        console.log(`Tenant info not found for user id: ${user.id}`);
         return res.status(404).json({
           success: false,
           message: 'Thông tin người thuê không tìm thấy',
@@ -85,7 +85,7 @@ export const login = async (req, res) => {
       token = generateToken(user.id, user.username, user.role);
     }
 
-    console.log(`Login successful for user: ${username}`);  
+    console.log(`Login successful for user: ${username}`);
 
     return res.status(200).json({
       success: true,
@@ -100,7 +100,6 @@ export const login = async (req, res) => {
         phone: userWithInfo.phone || '',
         idNumber: userWithInfo.identity_card || null,
         gender: userWithInfo.gender || null,
-        birthday: userWithInfo.birthday || null,
         landlord_id: userWithInfo.landlord_id || null,
         createdAt: userWithInfo.created_at,
       },
@@ -123,9 +122,9 @@ export const me = async (req, res) => {
   try {
     const userId = req.user.id;
     const userRole = req.user.role;
-    
+
     let userWithInfo;
-    
+
     if (userRole === 'landlord') {
       userWithInfo = await getUserWithLandlordInfo(userId);
     } else if (userRole === 'tenant') {
@@ -156,7 +155,6 @@ export const me = async (req, res) => {
         address: userWithInfo.address || null,
         idNumber: userWithInfo.identity_card || null,
         gender: userWithInfo.gender || null,
-        birthday: userWithInfo.birthday || null,
         createdAt: userWithInfo.created_at,
       },
     });

@@ -1,4 +1,5 @@
 import {
+  previewInvoice,
   generateMonthlyInvoices,
   getInvoices,
   getInvoiceById,
@@ -63,6 +64,39 @@ export const generateInvoices = async (req, res) => {
     return res.status(400).json({
       success: false,
       message: error.message || 'Tao hoa don that bai',
+    });
+  }
+};
+
+export const previewGeneratedInvoice = async (req, res) => {
+  try {
+    const { month, year } = req.body;
+
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thang va nam la bat buoc',
+      });
+    }
+
+    const preview = await previewInvoice(req.user.id, parseInt(month), parseInt(year), req.body);
+
+    return res.status(200).json({
+      success: true,
+      data: preview,
+    });
+  } catch (error) {
+    console.error('Preview invoice error:', {
+      type: 'VALIDATION_ERROR',
+      field: 'invoice_preview',
+      value: { month: req.body.month, year: req.body.year, contract_id: req.body.contract_id },
+      userId: req.user?.id,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Khong xem truoc duoc hoa don',
     });
   }
 };
@@ -240,6 +274,10 @@ Phong: ${invoice.room_number}
 Nguoi thue: ${invoice.tenant_name}
 Dien thoai: ${invoice.tenant_phone || 'N/A'}
 Chu nha: ${invoice.landlord_name || 'N/A'}
+Dien thoai chu nha: ${invoice.landlord_phone || 'N/A'}
+Ngan hang: ${invoice.bank_name || 'N/A'}
+So tai khoan: ${invoice.bank_account_number || 'N/A'}
+Chu tai khoan: ${invoice.bank_account_name || 'N/A'}
 
 -----------------------------------------
 CHI TIET:

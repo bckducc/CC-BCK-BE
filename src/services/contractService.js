@@ -122,7 +122,9 @@ export const getContracts = async (filters, landlordUserId) => {
   
   try {
     let query = `
-      SELECT c.*, t.full_name as tenant_name, t.phone as tenant_phone, r.room_number, r.floor
+      SELECT c.*, c.monthly_rent as monthlyRent, c.deposit_amount as depositAmount,
+             t.full_name as tenant_name, t.phone as tenant_phone,
+             r.room_number, r.floor, r.price as room_price
       FROM contracts c
       INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
       INNER JOIN rooms r ON c.room_id = r.id
@@ -165,7 +167,8 @@ export const getContractById = async (contractId, landlordUserId) => {
   
   try {
     const [rows] = await connection.query(
-      `SELECT c.*, t.full_name as tenant_name, t.phone as tenant_phone, t.identity_card,
+      `SELECT c.*, c.monthly_rent as monthlyRent, c.deposit_amount as depositAmount,
+              t.full_name as tenant_name, t.phone as tenant_phone, t.identity_card,
               r.room_number, r.floor, r.area, r.price as room_price
        FROM contracts c
        INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
@@ -189,7 +192,8 @@ export const getContractByTenant = async (tenantUserId) => {
   
   try {
     const [rows] = await connection.query(
-      `SELECT c.*, r.room_number, r.floor, r.area, r.price as room_price, r.description,
+      `SELECT c.*, c.monthly_rent as monthlyRent, c.deposit_amount as depositAmount,
+              r.room_number, r.floor, r.area, r.price as room_price, r.description,
               l.full_name as landlord_name, l.phone as landlord_phone,
               l.bank_name, l.bank_account_number, l.bank_account_name
        FROM contracts c
