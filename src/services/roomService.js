@@ -39,41 +39,68 @@ const ensureRoomDepositColumn = async () => {
   return ensureRoomDepositColumnPromise;
 };
 
+export const synchronizeRoomStatuses = async (connection, ownerId) => {
+  await connection.query(
+    `UPDATE rooms r
+     LEFT JOIN (
+       SELECT DISTINCT room_id
+       FROM contracts
+       WHERE status = 'active'
+     ) active_contracts ON active_contracts.room_id = r.id
+     SET r.status = CASE
+       WHEN active_contracts.room_id IS NOT NULL THEN 'rented'
+       WHEN r.status = 'rented' THEN 'available'
+       ELSE r.status
+     END
+     WHERE r.owner_id = ?
+       AND (
+         (active_contracts.room_id IS NOT NULL AND r.status <> 'rented')
+         OR (active_contracts.room_id IS NULL AND r.status = 'rented')
+       )`,
+    [ownerId]
+  );
+};
+
 export const getAllRoomsByLandlord = async (ownerId, filters = {}) => {
   const { floor, status, min_price, max_price, room_number } = filters;
   try {
     await ensureRoomDepositColumn();
     const connection = await pool.getConnection();
-    
-    let query = 'SELECT * FROM rooms WHERE owner_id = ?';
-    const params = [ownerId];
 
-    if (floor) {
-      query += ' AND floor = ?';
-      params.push(floor);
-    }
-    if (status) {
-      query += ' AND status = ?';
-      params.push(status);
-    }
-    if (min_price) {
-      query += ' AND price >= ?';
-      params.push(parseFloat(min_price));
-    }
-    if (max_price) {
-      query += ' AND price <= ?';
-      params.push(parseFloat(max_price));
-    }
-    if (room_number) {
-      query += ' AND room_number LIKE ?';
-      params.push(`%${room_number}%`);
-    }
+    try {
+      await synchronizeRoomStatuses(connection, ownerId);
 
-    query += ' ORDER BY room_number ASC';
+      let query = 'SELECT * FROM rooms WHERE owner_id = ?';
+      const params = [ownerId];
 
-    const [rows] = await connection.query(query, params);
-    connection.release();
-    return rows;
+      if (floor) {
+        query += ' AND floor = ?';
+        params.push(floor);
+      }
+      if (status) {
+        query += ' AND status = ?';
+        params.push(status);
+      }
+      if (min_price) {
+        query += ' AND price >= ?';
+        params.push(parseFloat(min_price));
+      }
+      if (max_price) {
+        query += ' AND price <= ?';
+        params.push(parseFloat(max_price));
+      }
+      if (room_number) {
+        query += ' AND room_number LIKE ?';
+        params.push(`%${room_number}%`);
+      }
+
+      query += ' ORDER BY room_number ASC';
+
+      const [rows] = await connection.query(query, params);
+      return rows;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error('Database error in getAllRoomsByLandlord:', error);
     throw error;
@@ -84,14 +111,19 @@ export const getRoomById = async (roomId, ownerId) => {
   try {
     await ensureRoomDepositColumn();
     const connection = await pool.getConnection();
-    const [rows] = await connection.query(
-      `SELECT * FROM rooms 
-       WHERE id = ? AND owner_id = ?`,
-      [roomId, ownerId]
-    );
-    connection.release();
-    
-    return rows[0] || null;
+
+    try {
+      await synchronizeRoomStatuses(connection, ownerId);
+      const [rows] = await connection.query(
+        `SELECT * FROM rooms
+         WHERE id = ? AND owner_id = ?`,
+        [roomId, ownerId]
+      );
+
+      return rows[0] || null;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error('Database error in getRoomById:', error);
     throw error;

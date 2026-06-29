@@ -1,9 +1,12 @@
 import pool from '../config/database.js';
+import { synchronizeRoomStatuses } from './roomService.js';
 
 export const getLandlordDashboard = async (landlordId) => {
   const connection = await pool.getConnection();
   
   try {
+    await synchronizeRoomStatuses(connection, landlordId);
+
     const [rooms] = await connection.query(
       `SELECT id, room_number, floor, area, price, status, description, created_at
        FROM rooms

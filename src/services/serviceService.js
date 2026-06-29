@@ -139,16 +139,32 @@ export const deleteService = async (serviceId) => {
   }
 };
 
-export const assignServiceToRoom = async (roomId, serviceId, quantity = 1, applied_date) => {
+export const assignServiceToRooms = async (roomIds, serviceId, quantity = 1, appliedDate, landlordUserId) => {
+  const uniqueRoomIds = [...new Set(roomIds.map((roomId) => String(roomId)).filter(Boolean))];
+
+  if (uniqueRoomIds.length === 0) {
+    throw new Error('Cần chọn ít nhất một phòng');
+  }
+
+  const parsedQuantity = Number(quantity ?? 1);
+  if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+    throw new Error('Số lượng phải là số nguyên lớn hơn 0');
+  }
+
   const connection = await pool.getConnection();
   try {
-    const [roomCheck] = await connection.query(
-      'SELECT * FROM rooms WHERE id = ?',
-      [roomId]
+    await connection.beginTransaction();
+
+    const placeholders = uniqueRoomIds.map(() => '?').join(', ');
+    const [roomRows] = await connection.query(
+      `SELECT id FROM rooms WHERE id IN (${placeholders}) AND owner_id = ? FOR UPDATE`,
+      [...uniqueRoomIds, landlordUserId]
     );
-    if (roomCheck.length === 0) {
-      throw new Error('Phòng không tồn tại');
+
+    if (roomRows.length !== uniqueRoomIds.length) {
+      throw new Error('Một hoặc nhiều phòng không tồn tại hoặc không thuộc quyền quản lý của bạn');
     }
+
     const [serviceCheck] = await connection.query(
       'SELECT * FROM services WHERE id = ?',
       [serviceId]
@@ -156,24 +172,42 @@ export const assignServiceToRoom = async (roomId, serviceId, quantity = 1, appli
     if (serviceCheck.length === 0) {
       throw new Error('Dịch vụ không tồn tại');
     }
-    const [existing] = await connection.query(
-      'SELECT * FROM room_services WHERE room_id = ? AND service_id = ?',
-      [roomId, serviceId]
+    const [existingRows] = await connection.query(
+      `SELECT room_id FROM room_services WHERE service_id = ? AND room_id IN (${placeholders}) FOR UPDATE`,
+      [serviceId, ...uniqueRoomIds]
     );
-    if (existing.length > 0) {
-      throw new Error('Dịch vụ đã được gán cho phòng này');
+
+    const existingRoomIds = new Set(existingRows.map((row) => String(row.room_id)));
+    const assignableRoomIds = uniqueRoomIds.filter((roomId) => !existingRoomIds.has(roomId));
+
+    if (assignableRoomIds.length > 0) {
+      const values = assignableRoomIds.map(() => '(?, ?, ?, ?)').join(', ');
+      const params = assignableRoomIds.flatMap((roomId) => [
+        roomId,
+        serviceId,
+        parsedQuantity,
+        appliedDate || null,
+      ]);
+
+      await connection.query(
+        `INSERT INTO room_services (room_id, service_id, quantity, applied_date) VALUES ${values}`,
+        params
+      );
     }
-    await connection.query(
-      'INSERT INTO room_services (room_id, service_id, quantity, applied_date) VALUES (?, ?, ?, ?)',
-      [roomId, serviceId, quantity, applied_date || null]
-    );
+
+    await connection.commit();
+
     return {
-      room_id: roomId,
       service_id: serviceId,
-      quantity,
-      applied_date: applied_date || null,
+      assigned_room_ids: assignableRoomIds,
+      skipped_room_ids: uniqueRoomIds.filter((roomId) => existingRoomIds.has(roomId)),
+      quantity: parsedQuantity,
+      applied_date: appliedDate || null,
       service_name: serviceCheck[0].service_name,
     };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
   } finally {
     connection.release();
   }

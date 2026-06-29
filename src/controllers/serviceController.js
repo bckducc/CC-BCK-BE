@@ -4,7 +4,7 @@ import {
   getServiceById,
   updateService,
   deleteService,
-  assignServiceToRoom,
+  assignServiceToRooms,
   removeServiceFromRoom,
   getRoomServices,
   updateRoomServiceQuantity,
@@ -101,17 +101,24 @@ export const removeService = async (req, res) => {
 
 export const assignService = async (req, res) => {
   try {
-    const { room_id, service_id, quantity, applied_date } = req.body;
-    if (!room_id || !service_id) {
+    const { room_id, room_ids, service_id, quantity, applied_date } = req.body;
+    const targetRoomIds = Array.isArray(room_ids) ? room_ids : room_id ? [room_id] : [];
+    if (targetRoomIds.length === 0 || !service_id) {
       return res.status(400).json({
         success: false,
-        message: 'Phòng và dịch vụ là bắt buộc',
+        message: 'Cần chọn ít nhất một phòng và một dịch vụ',
       });
     }
-    const result = await assignServiceToRoom(room_id, service_id, quantity, applied_date);
+    const result = await assignServiceToRooms(
+      targetRoomIds,
+      service_id,
+      quantity,
+      applied_date,
+      req.user.id
+    );
     return res.status(201).json({
       success: true,
-      message: 'Gán dịch vụ vào phòng thành công',
+      message: 'Gán dịch vụ vào các phòng thành công',
       data: result,
     });
   } catch (error) {

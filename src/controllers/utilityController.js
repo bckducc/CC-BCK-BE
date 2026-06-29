@@ -11,12 +11,12 @@ import {
 export const recordReading = async (req, res) => {
   try {
     const landlordUserId = req.user.id;
-    const { contract_id, month, year, electric_price, water_price } = req.body;
+    const { contract_id, room_id, month, year, electric_price, water_price } = req.body;
 
-    if (!contract_id || !month || !year || electric_price === undefined || water_price === undefined) {
+    if ((!contract_id && !room_id) || !month || !year || electric_price === undefined || water_price === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Hop dong, thang, nam, gia dien va gia nuoc la bat buoc',
+        message: 'Phòng hoặc hợp đồng, tháng, năm, giá điện và giá nước là bắt buộc',
       });
     }
 
@@ -24,7 +24,7 @@ export const recordReading = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Ghi nhan chi so dien nuoc thanh cong',
+      message: 'Ghi nhận chỉ số điện nước thành công',
       data: utility,
     });
   } catch (error) {
@@ -38,7 +38,7 @@ export const recordReading = async (req, res) => {
     });
     return res.status(400).json({
       success: false,
-      message: error.message || 'Ghi nhan chi so dien nuoc that bai',
+      message: error.message || 'Ghi nhận chỉ số điện nước thất bại',
     });
   }
 };

@@ -1,6 +1,41 @@
 import pool from '../config/database.js';
 import { validateUtilityReading, validateNotFutureDate, validatePrice } from '../utils/validators.js';
 
+let ensureUtilityIndexPromise = null;
+
+const ensureUtilityUniqueIndex = async () => {
+  if (!ensureUtilityIndexPromise) {
+    ensureUtilityIndexPromise = (async () => {
+      const connection = await pool.getConnection();
+
+      try {
+        const [legacyIndex] = await connection.query(
+          `SHOW INDEX FROM utilities WHERE Key_name = 'unique_room_month'`
+        );
+        if (legacyIndex.length > 0) {
+          await connection.query('ALTER TABLE utilities DROP INDEX unique_room_month');
+        }
+
+        const [contractIndex] = await connection.query(
+          `SHOW INDEX FROM utilities WHERE Key_name = 'unique_contract_month'`
+        );
+        if (contractIndex.length === 0) {
+          await connection.query(
+            'ALTER TABLE utilities ADD UNIQUE KEY unique_contract_month (contract_id, month, year)'
+          );
+        }
+      } finally {
+        connection.release();
+      }
+    })().catch((error) => {
+      ensureUtilityIndexPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureUtilityIndexPromise;
+};
+
 
 const UTILITY_COLUMNS = `
   id, contract_id, month, year,
@@ -74,7 +109,7 @@ const normalizeNote = (value) => {
   return value.trim() || null;
 };
 
-const buildUtilityPayload = async (utilityData, landlordUserId) => {
+const buildUtilityPayload = (utilityData) => {
   const contractId = normalizePositiveInt(utilityData.contract_id, 'Hop dong');
   const month = normalizePositiveInt(utilityData.month, 'Thang');
   const year = normalizePositiveInt(utilityData.year, 'Nam');
@@ -111,11 +146,40 @@ const buildUtilityPayload = async (utilityData, landlordUserId) => {
 };
 
 export const recordUtilityReading = async (utilityData, landlordUserId) => {
-  const utility = await buildUtilityPayload(utilityData, landlordUserId);
+  await ensureUtilityUniqueIndex();
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
+
+    let contractId = utilityData.contract_id;
+
+    if (!contractId && utilityData.room_id) {
+      const roomId = normalizePositiveInt(utilityData.room_id, 'Phòng');
+      const [activeContracts] = await connection.query(
+        `SELECT c.id
+         FROM contracts c
+         INNER JOIN rooms r ON c.room_id = r.id
+         WHERE c.room_id = ? AND c.status = 'active' AND r.owner_id = ?
+         ORDER BY c.created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [roomId, landlordUserId]
+      );
+
+      if (activeContracts.length === 0) {
+        throw new Error('Phòng chưa có hợp đồng đang hiệu lực');
+      }
+
+      contractId = activeContracts[0].id;
+    }
+
+    let utility = buildUtilityPayload({
+      ...utilityData,
+      contract_id: contractId,
+      electric_old: 0,
+      water_old: 0,
+    });
 
     const [contractCheck] = await connection.query(
       `SELECT c.id
@@ -204,6 +268,16 @@ export const recordUtilityReading = async (utilityData, landlordUserId) => {
   }
 };
 
+const getDatePeriod = (value, fieldName) => {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${fieldName} không hợp lệ`);
+  }
+
+  return date.getFullYear() * 100 + date.getMonth() + 1;
+};
+
 export const getUtilityReading = async (contractId, month, year, landlordUserId) => {
   const normalizedContractId = normalizePositiveInt(contractId, 'Hop dong');
   const normalizedMonth = normalizePositiveInt(month, 'Thang');
@@ -212,7 +286,7 @@ export const getUtilityReading = async (contractId, month, year, landlordUserId)
 
   try {
     const [contractCheck] = await connection.query(
-      `SELECT c.id
+      `SELECT c.id, c.room_id, c.start_date, c.end_date
        FROM contracts c
        INNER JOIN rooms r ON c.room_id = r.id
        WHERE c.id = ? AND r.owner_id = ?`,
@@ -220,7 +294,54 @@ export const getUtilityReading = async (contractId, month, year, landlordUserId)
     );
 
     if (contractCheck.length === 0) {
-      throw new Error('Hop dong khong ton tai hoac khong thuoc ve ban');
+      throw new Error('Hợp đồng không tồn tại hoặc không thuộc về bạn');
+    }
+
+    const readingPeriod = utility.year * 100 + utility.month;
+    const contractStartPeriod = getDatePeriod(contractCheck[0].start_date, 'Ngày bắt đầu hợp đồng');
+    const contractEndPeriod = getDatePeriod(contractCheck[0].end_date, 'Ngày kết thúc hợp đồng');
+
+    if (readingPeriod < contractStartPeriod || readingPeriod > contractEndPeriod) {
+      throw new Error(
+        `Tháng ghi chỉ số phải nằm trong thời hạn hợp đồng (${contractCheck[0].start_date} - ${contractCheck[0].end_date})`
+      );
+    }
+
+    const [previousReadings] = await connection.query(
+      `SELECT u.electric_new, u.water_new
+       FROM utilities u
+       INNER JOIN contracts c ON c.id = u.contract_id
+       WHERE c.room_id = ?
+         AND NOT (u.contract_id = ? AND u.month = ? AND u.year = ?)
+         AND (
+           u.year < ?
+           OR (u.year = ? AND u.month < ?)
+           OR (u.year = ? AND u.month = ? AND u.contract_id <> ?)
+         )
+       ORDER BY u.year DESC, u.month DESC, u.id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [
+        contractCheck[0].room_id,
+        utility.contract_id,
+        utility.month,
+        utility.year,
+        utility.year,
+        utility.year,
+        utility.month,
+        utility.year,
+        utility.month,
+        utility.contract_id,
+      ]
+    );
+
+    if (previousReadings.length > 0) {
+      utility = buildUtilityPayload({
+        ...utilityData,
+        contract_id: contractId,
+        electric_old: previousReadings[0].electric_new,
+        water_old: previousReadings[0].water_new,
+      });
     }
 
     const [rows] = await connection.query(

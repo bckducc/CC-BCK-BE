@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS utilities (
     note TEXT,
 
     CONSTRAINT fk_utilities_contract FOREIGN KEY (contract_id) REFERENCES contracts(id),
+    UNIQUE KEY unique_contract_month (contract_id, month, year),
     INDEX idx_contract_id (contract_id),
     INDEX idx_month_year (month, year)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
