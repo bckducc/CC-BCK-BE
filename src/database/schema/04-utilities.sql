@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS utilities (
     recorded_date DATE,
     note TEXT,
 
-    CONSTRAINT fk_utilities_contract FOREIGN KEY (contract_id) REFERENCES contracts(id),
+    CONSTRAINT fk_utilities_contract
+        FOREIGN KEY (contract_id) REFERENCES contracts(id),
     UNIQUE KEY unique_contract_month (contract_id, month, year),
     INDEX idx_contract_id (contract_id),
     INDEX idx_month_year (month, year)

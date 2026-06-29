@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS landlord (
     bank_account_number VARCHAR(50),
     bank_account_name VARCHAR(100),
     tax_code VARCHAR(50),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id)
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS tenant (
     full_name VARCHAR(100) NOT NULL,
     phone VARCHAR(10),
     identity_card VARCHAR(20),
+    birthday DATE,
     gender ENUM('male', 'female', 'other'),
     address VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -38,6 +40,14 @@ CREATE TABLE IF NOT EXISTS tenant (
     INDEX idx_full_name (full_name),
     INDEX idx_phone (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Keep existing databases compatible when this schema file is reapplied.
+ALTER TABLE landlord
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
+    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+ALTER TABLE tenant
+    ADD COLUMN IF NOT EXISTS birthday DATE AFTER identity_card;
 
 INSERT INTO users (username, password, role, is_active) 
 VALUES ('admin', '$2a$10$xKZNyWBNXbKQ3eFKvhLfueL3rK8F7aGz7JyJvK8L5Z6W7H8J9K0L', 'landlord', TRUE)

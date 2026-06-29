@@ -81,8 +81,7 @@ async function runSchemaFiles(connection) {
     '03-services.sql',
     '04-utilities.sql',
     '05-invoices.sql',
-    '06-notifications.sql',
-    '07-utility-config.sql'
+    '06-notifications.sql'
   ];
 
   for (const file of schemaFiles) {

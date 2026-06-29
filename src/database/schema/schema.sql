@@ -11,6 +11,10 @@
 -- 6. 05-invoices.sql (invoices, payments)
 -- 7. 06-notifications.sql (notifications)
 
+-- Compatibility columns retained because they are used by the API:
+-- landlord.updated_at, tenant.address, rooms.deposit
+-- tenant.birthday is included from the current data model.
+
 -- NOTE: Run schema files individually in MySQL client
 -- Example: source src/database/schema/01-users.sql;
 

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (contract_id) REFERENCES contracts(id),
+    CONSTRAINT fk_invoices_contract
+        FOREIGN KEY (contract_id) REFERENCES contracts(id),
     UNIQUE KEY unique_contract_month (contract_id, month, year),
     INDEX idx_contract_id (contract_id),
     INDEX idx_month_year (month, year),
@@ -35,8 +36,10 @@ CREATE TABLE IF NOT EXISTS payments (
     received_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-    FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_payments_invoice
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+    CONSTRAINT fk_payments_receiver
+        FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_invoice_id (invoice_id),
     INDEX idx_payment_date (payment_date),
     INDEX idx_received_by (received_by)

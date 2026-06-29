@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS rooms (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (owner_id) REFERENCES landlord(user_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_owner_room (owner_id, room_number),
     INDEX idx_owner_id (owner_id),
     INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

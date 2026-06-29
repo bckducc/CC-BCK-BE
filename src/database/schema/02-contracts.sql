@@ -12,8 +12,10 @@ CREATE TABLE IF NOT EXISTS contracts (
     signed_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-    FOREIGN KEY (tenant_id) REFERENCES tenant(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_contracts_room
+        FOREIGN KEY (room_id) REFERENCES rooms(id),
+    CONSTRAINT fk_contracts_tenant
+        FOREIGN KEY (tenant_id) REFERENCES tenant(user_id),
     INDEX idx_room_id (room_id),
     INDEX idx_tenant_id (tenant_id),
     INDEX idx_status (status),
