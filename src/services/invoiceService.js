@@ -333,7 +333,7 @@ export const generateMonthlyInvoices = async (landlordUserId, month, year, optio
 };
 
 export const getInvoices = async (filters, landlordUserId) => {
-  const { status, month, year, room_id } = filters;
+  const { status, month, year, room_id, search } = filters;
   const connection = await pool.getConnection();
 
   try {
@@ -365,6 +365,21 @@ export const getInvoices = async (filters, landlordUserId) => {
     if (room_id) {
       query += ' AND c.room_id = ?';
       params.push(requirePositiveInt(room_id, 'Phong'));
+    }
+
+    const normalizedSearch = String(search || '').trim().replace(/^#/, '').slice(0, 100);
+    if (normalizedSearch) {
+      const escapedSearch = normalizedSearch.replace(/[\\%_]/g, '\\$&');
+      const searchPattern = `%${escapedSearch}%`;
+
+      query += ` AND (
+        CAST(i.id AS CHAR) LIKE ?
+        OR COALESCE(c.contract_code, '') LIKE ?
+        OR r.room_number LIKE ?
+        OR t.full_name LIKE ?
+        OR COALESCE(t.phone, '') LIKE ?
+      )`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
     }
 
     query += ' ORDER BY i.year DESC, i.month DESC, i.id DESC';

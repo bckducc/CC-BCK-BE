@@ -103,8 +103,8 @@ export const previewGeneratedInvoice = async (req, res) => {
 
 export const listInvoices = async (req, res) => {
   try {
-    const { status, month, year, room_id, page = 1, limit = 20 } = req.query;
-    const invoices = await getInvoices({ status, month, year, room_id }, req.user.id);
+    const { status, month, year, room_id, search, page = 1, limit = 20 } = req.query;
+    const invoices = await getInvoices({ status, month, year, room_id, search }, req.user.id);
     const result = paginate(invoices, page, limit);
 
     return res.status(200).json({
