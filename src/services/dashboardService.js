@@ -34,44 +34,49 @@ export const getLandlordDashboard = async (landlordId) => {
     );
 
     const [tenantsStats] = await connection.query(
-      `SELECT COUNT(DISTINCT t.user_id) as total_tenants
-       FROM \`tenant\` t
-       INNER JOIN users u ON t.user_id = u.id
-       INNER JOIN contracts c ON c.tenant_id = t.user_id
+      `SELECT COUNT(DISTINCT c.tenant_id) as total_tenants
+       FROM contracts c
        INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.owner_id = ? AND c.status = 'active' AND u.is_active = TRUE`,
+       WHERE r.owner_id = ? AND c.status = 'active'`,
       [landlordId]
     );
 
     const [unpaidStats] = await connection.query(
-      `SELECT COUNT(*) as unpaid_invoices
-       FROM invoices i
-       INNER JOIN contracts c ON i.contract_id = c.id
-       INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')`,
+      `SELECT
+         COUNT(*) as unpaid_invoices,
+         COALESCE(SUM(outstanding.remaining_amount), 0) as unpaid_amount
+       FROM (
+         SELECT GREATEST(i.final_amount - COALESCE(p.total_paid, 0), 0) as remaining_amount
+         FROM invoices i
+         INNER JOIN contracts c ON i.contract_id = c.id
+         INNER JOIN rooms r ON c.room_id = r.id
+         LEFT JOIN (
+           SELECT invoice_id, SUM(amount) as total_paid
+           FROM payments
+           GROUP BY invoice_id
+         ) p ON p.invoice_id = i.id
+         WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')
+       ) outstanding
+       WHERE outstanding.remaining_amount > 0`,
       [landlordId]
     );
 
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
+    const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+    const nextMonthYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+    const nextMonthStart = `${nextMonthYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
     const [revenueStats] = await connection.query(
-      `SELECT COALESCE(SUM(i.final_amount), 0) as monthly_revenue
-       FROM invoices i
+      `SELECT COALESCE(SUM(p.amount), 0) as monthly_revenue
+       FROM payments p
+       INNER JOIN invoices i ON p.invoice_id = i.id
        INNER JOIN contracts c ON i.contract_id = c.id
        INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.owner_id = ? AND i.month = ? AND i.year = ? AND i.status = 'paid'`,
-      [landlordId, currentMonth, currentYear]
-    );
-
-    const [unpaidAmountStats] = await connection.query(
-      `SELECT COALESCE(SUM(i.final_amount), 0) as unpaid_amount
-       FROM invoices i
-       INNER JOIN contracts c ON i.contract_id = c.id
-       INNER JOIN rooms r ON c.room_id = r.id
-       WHERE r.owner_id = ? AND i.status IN ('pending', 'overdue')`,
-      [landlordId]
+       WHERE r.owner_id = ? AND p.payment_date >= ? AND p.payment_date < ?`,
+      [landlordId, monthStart, nextMonthStart]
     );
 
     const [recentInvoices] = await connection.query(
@@ -82,28 +87,28 @@ export const getLandlordDashboard = async (landlordId) => {
        INNER JOIN \`tenant\` t ON c.tenant_id = t.user_id
        WHERE r.owner_id = ?
        ORDER BY i.created_at DESC
-       LIMIT 5`,
+       LIMIT 6`,
       [landlordId]
     );
 
     return {
       rooms: {
-        total: roomsStats[0].total || 0,
-        available: roomsStats[0].available || 0,
-        rented: roomsStats[0].rented || 0,
-        maintenance: roomsStats[0].maintenance || 0,
+        total: Number(roomsStats[0].total || 0),
+        available: Number(roomsStats[0].available || 0),
+        rented: Number(roomsStats[0].rented || 0),
+        maintenance: Number(roomsStats[0].maintenance || 0),
         list: rooms,
       },
       contracts: {
-        active: contractsStats[0].active_contracts || 0,
+        active: Number(contractsStats[0].active_contracts || 0),
       },
       tenants: {
-        total: tenantsStats[0].total_tenants || 0,
+        total: Number(tenantsStats[0].total_tenants || 0),
       },
       invoices: {
-        unpaid_count: unpaidStats[0].unpaid_invoices || 0,
-        monthly_revenue: revenueStats[0].monthly_revenue || 0,
-        unpaid_amount: unpaidAmountStats[0].unpaid_amount || 0,
+        unpaid_count: Number(unpaidStats[0].unpaid_invoices || 0),
+        monthly_revenue: Number(revenueStats[0].monthly_revenue || 0),
+        unpaid_amount: Number(unpaidStats[0].unpaid_amount || 0),
       },
       recent_invoices: recentInvoices,
     };

@@ -1,11 +1,27 @@
 import pool from '../config/database.js';
 import { validateNotPastDate } from '../utils/validators.js';
 
+const generateNextContractCode = async (connection) => {
+  const [rows] = await connection.query(
+    `SELECT contract_code
+     FROM contracts
+     WHERE contract_code REGEXP '^C[0-9]+$'
+     ORDER BY CAST(SUBSTRING(contract_code, 2) AS UNSIGNED) DESC
+     LIMIT 1
+     FOR UPDATE`
+  );
+
+  const latestCode = rows[0]?.contract_code || '';
+  const latestNumber = Number.parseInt(latestCode.slice(1), 10);
+  const nextNumber = Number.isNaN(latestNumber) ? 0 : latestNumber + 1;
+
+  return `C${String(nextNumber).padStart(3, '0')}`;
+};
+
 export const createContract = async (contractData, landlordUserId) => {
   const { 
     tenant_id, 
     room_id, 
-    contract_code,
     start_date, 
     end_date, 
     deposit_amount, 
@@ -76,21 +92,12 @@ export const createContract = async (contractData, landlordUserId) => {
       throw new Error('Phòng đã có người thuê');
     }
 
-    if (contract_code) {
-      const [codeCheck] = await connection.query(
-        'SELECT id FROM contracts WHERE contract_code = ?',
-        [contract_code]
-      );
-
-      if (codeCheck.length > 0) {
-        throw new Error('Mã hợp đồng đã tồn tại');
-      }
-    }
+    const contractCode = await generateNextContractCode(connection);
 
     const [result] = await connection.query(
       `INSERT INTO contracts (room_id, tenant_id, contract_code, start_date, end_date, deposit_amount, monthly_rent, terms, signed_date, status, created_at) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [room_id, tenant_id, contract_code || null, start_date, end_date, deposit_amount, monthly_rent, terms || null, signed_date || null]
+      [room_id, tenant_id, contractCode, start_date, end_date, deposit_amount, monthly_rent, terms || null, signed_date || null]
     );
 
     const contractId = result.insertId;

@@ -5,7 +5,7 @@ import {
 
 export const getLandlordStats = async (req, res) => {
   try {
-    const landlordId = req.user.landlord_id;
+    const landlordId = req.user.landlord_id ?? req.user.id;
 
     const stats = await getLandlordDashboard(landlordId);
 
@@ -16,7 +16,7 @@ export const getLandlordStats = async (req, res) => {
   } catch (error) {
     console.error('Get landlord dashboard error:', {
       type: 'GET_LANDLORD_DASHBOARD_ERROR',
-      landlordId: req.user?.landlord_id,
+      landlordId: req.user?.landlord_id ?? req.user?.id,
       userId: req.user?.id,
       error: error.message,
       timestamp: new Date().toISOString()
